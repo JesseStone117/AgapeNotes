@@ -12,6 +12,7 @@ pub struct Config {
     pub session_ttl_days: i64,
     pub google_client_id: Option<String>,
     pub google_client_secret: Option<String>,
+    pub admin_sql_token: Option<String>,
 }
 
 impl Config {
@@ -45,6 +46,7 @@ impl Config {
             session_ttl_days,
             google_client_id: optional_env("GOOGLE_CLIENT_ID"),
             google_client_secret: optional_env("GOOGLE_CLIENT_SECRET"),
+            admin_sql_token: optional_env("ADMIN_SQL_TOKEN"),
         })
     }
 

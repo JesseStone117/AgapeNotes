@@ -42,9 +42,23 @@ npm run dev
 - `APP_BASE_URL`: usually the same value as `PUBLIC_BASE_URL`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
+- `ADMIN_SQL_TOKEN`: a long random bearer token for the admin SQL endpoint
 
 Add this production callback URL to the Google OAuth client:
 
 ```text
 https://YOUR-RENDER-SERVICE.onrender.com/api/auth/google/callback
 ```
+
+## Admin SQL
+
+When `ADMIN_SQL_TOKEN` is set, the server exposes a token-gated SQL endpoint for operational inspection:
+
+```bash
+curl https://YOUR-RENDER-SERVICE.onrender.com/api/admin/sql \
+  -H "Authorization: Bearer $ADMIN_SQL_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"sql":"SELECT id, email, google_sub, created_at FROM users ORDER BY created_at DESC","maxRows":50}'
+```
+
+The endpoint is intended for trusted admin use only. It can run selecting or modifying statements against the local Turso database.

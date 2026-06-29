@@ -40,6 +40,23 @@ pub struct PutVaultRequest {
     pub ciphertext: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminSqlRequest {
+    pub sql: String,
+    pub max_rows: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminSqlResponse {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub rows_affected: Option<u64>,
+    pub row_count: usize,
+    pub truncated: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultResponse {

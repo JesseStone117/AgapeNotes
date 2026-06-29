@@ -1,20 +1,22 @@
 use crate::{
     auth::{
-        exchange_google_code, expired_cookie, hash_session_token, oauth_state_cookie, random_token,
-        session_cookie, session_expires_at, user_from_cookie, GoogleCallbackQuery,
-        OAUTH_STATE_COOKIE, SESSION_COOKIE,
+        GoogleCallbackQuery, OAUTH_STATE_COOKIE, SESSION_COOKIE, exchange_google_code,
+        expired_cookie, hash_session_token, oauth_state_cookie, random_token, session_cookie,
+        session_expires_at, user_from_cookie,
     },
     config::Config,
     db::Db,
     error::AppError,
-    models::{PutVaultRequest, User, VaultResponse, VaultSummary},
+    models::{
+        AdminSqlRequest, AdminSqlResponse, PutVaultRequest, User, VaultResponse, VaultSummary,
+    },
 };
 use axum::{
+    Json, Router,
     extract::{Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Redirect},
     routing::{get, post},
-    Json, Router,
 };
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
@@ -42,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
         .route("/api/vault", get(get_vault).put(put_vault))
+        .route("/api/admin/sql", post(admin_sql))
         .fallback_service(static_files)
         .with_state(state)
 }
@@ -87,7 +90,9 @@ async fn google_callback(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     if let Some(error) = query.error {
-        return Err(AppError::OAuth(format!("Google returned an error: {error}")));
+        return Err(AppError::OAuth(format!(
+            "Google returned an error: {error}"
+        )));
     }
 
     let expected_state = jar
@@ -148,10 +153,7 @@ struct MeResponse {
     vault: Option<VaultSummary>,
 }
 
-async fn me(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> Result<Json<MeResponse>, AppError> {
+async fn me(State(state): State<AppState>, jar: CookieJar) -> Result<Json<MeResponse>, AppError> {
     let user = match user_from_cookie(&state, &jar).await {
         Ok(user) => user,
         Err(AppError::Unauthorized) => {
@@ -201,6 +203,25 @@ async fn put_vault(
     Ok(Json(VaultResponse::from(Some(vault))))
 }
 
+async fn admin_sql(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AdminSqlRequest>,
+) -> Result<Json<AdminSqlResponse>, AppError> {
+    require_admin_sql_token(&state, &headers)?;
+    validate_admin_sql(&payload.sql)?;
+
+    let max_rows = payload.max_rows.unwrap_or(250).clamp(1, 2000);
+    tracing::warn!(
+        max_rows,
+        sql_len = payload.sql.len(),
+        "admin SQL endpoint invoked"
+    );
+
+    let result = state.db.execute_admin_sql(&payload.sql, max_rows).await?;
+    Ok(Json(result))
+}
+
 fn validate_vault_payload(payload: &PutVaultRequest) -> Result<(), AppError> {
     if !payload.crypto.is_object() {
         return Err(AppError::BadRequest(
@@ -222,4 +243,148 @@ fn validate_vault_payload(payload: &PutVaultRequest) -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+fn require_admin_sql_token(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
+    let expected = state
+        .config
+        .admin_sql_token
+        .as_deref()
+        .ok_or(AppError::NotFound)?;
+    let authorization = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or(AppError::Unauthorized)?;
+    let token = authorization
+        .strip_prefix("Bearer ")
+        .ok_or(AppError::Unauthorized)?;
+
+    if constant_time_eq(token.as_bytes(), expected.as_bytes()) {
+        Ok(())
+    } else {
+        Err(AppError::Unauthorized)
+    }
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    let mut diff = 0u8;
+    for (left, right) in left.iter().zip(right.iter()) {
+        diff |= left ^ right;
+    }
+
+    diff == 0
+}
+
+fn validate_admin_sql(sql: &str) -> Result<(), AppError> {
+    let trimmed = sql.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::BadRequest("SQL cannot be empty".to_string()));
+    }
+
+    const MAX_SQL_BYTES: usize = 100 * 1024;
+    if trimmed.len() > MAX_SQL_BYTES {
+        return Err(AppError::BadRequest("SQL is too large".to_string()));
+    }
+
+    if has_multiple_statements(trimmed) {
+        return Err(AppError::BadRequest(
+            "Only one SQL statement is allowed per request".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn has_multiple_statements(sql: &str) -> bool {
+    #[derive(Copy, Clone)]
+    enum Mode {
+        Normal,
+        SingleQuote,
+        DoubleQuote,
+        LineComment,
+        BlockComment,
+    }
+
+    let bytes = sql.as_bytes();
+    let mut index = 0;
+    let mut mode = Mode::Normal;
+    let mut ended = false;
+
+    while index < bytes.len() {
+        let current = bytes[index];
+        let next = bytes.get(index + 1).copied();
+
+        match mode {
+            Mode::Normal => {
+                if ended && !current.is_ascii_whitespace() {
+                    return true;
+                }
+
+                match (current, next) {
+                    (b'\'', _) => mode = Mode::SingleQuote,
+                    (b'"', _) => mode = Mode::DoubleQuote,
+                    (b'-', Some(b'-')) => {
+                        mode = Mode::LineComment;
+                        index += 1;
+                    }
+                    (b'/', Some(b'*')) => {
+                        mode = Mode::BlockComment;
+                        index += 1;
+                    }
+                    (b';', _) => ended = true,
+                    _ => {}
+                }
+            }
+            Mode::SingleQuote => {
+                if current == b'\'' {
+                    if next == Some(b'\'') {
+                        index += 1;
+                    } else {
+                        mode = Mode::Normal;
+                    }
+                }
+            }
+            Mode::DoubleQuote => {
+                if current == b'"' {
+                    if next == Some(b'"') {
+                        index += 1;
+                    } else {
+                        mode = Mode::Normal;
+                    }
+                }
+            }
+            Mode::LineComment => {
+                if current == b'\n' {
+                    mode = Mode::Normal;
+                }
+            }
+            Mode::BlockComment => {
+                if current == b'*' && next == Some(b'/') {
+                    mode = Mode::Normal;
+                    index += 1;
+                }
+            }
+        }
+
+        index += 1;
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_multiple_statements;
+
+    #[test]
+    fn detects_multiple_admin_sql_statements() {
+        assert!(!has_multiple_statements("SELECT 1"));
+        assert!(!has_multiple_statements("SELECT ';' AS value;"));
+        assert!(!has_multiple_statements("SELECT 'that''s fine';"));
+        assert!(has_multiple_statements("SELECT 1; SELECT 2"));
+    }
 }

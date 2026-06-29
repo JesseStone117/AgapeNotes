@@ -1,8 +1,10 @@
 use crate::{
     error::AppError,
-    models::{GoogleIdentity, User, VaultRecord},
+    models::{AdminSqlResponse, GoogleIdentity, User, VaultRecord},
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{SecondsFormat, Utc};
+use serde_json::json;
 use std::{path::Path, time::Duration};
 use turso::{Builder, Row, Value};
 use uuid::Uuid;
@@ -41,10 +43,7 @@ impl Db {
         let conn = self.database.connect()?;
         let now = now_string();
 
-        if let Some(existing) = self
-            .find_user_by_google_sub(&identity.sub)
-            .await?
-        {
+        if let Some(existing) = self.find_user_by_google_sub(&identity.sub).await? {
             conn.execute(
                 "UPDATE users
                  SET email = ?1, email_verified = ?2, display_name = ?3, picture_url = ?4, updated_at = ?5
@@ -89,7 +88,10 @@ impl Db {
             .ok_or_else(|| AppError::BadRequest("user insert failed".to_string()))
     }
 
-    pub async fn find_user_by_google_sub(&self, google_sub: &str) -> Result<Option<User>, AppError> {
+    pub async fn find_user_by_google_sub(
+        &self,
+        google_sub: &str,
+    ) -> Result<Option<User>, AppError> {
         let conn = self.database.connect()?;
         let mut rows = conn
             .query(
@@ -131,11 +133,8 @@ impl Db {
 
     pub async fn delete_session(&self, token_hash: &str) -> Result<(), AppError> {
         let conn = self.database.connect()?;
-        conn.execute(
-            "DELETE FROM sessions WHERE token_hash = ?1",
-            (token_hash,),
-        )
-        .await?;
+        conn.execute("DELETE FROM sessions WHERE token_hash = ?1", (token_hash,))
+            .await?;
         Ok(())
     }
 
@@ -143,8 +142,11 @@ impl Db {
         let conn = self.database.connect()?;
         let now = now_string();
 
-        conn.execute("DELETE FROM sessions WHERE expires_at <= ?1", (now.clone(),))
-            .await?;
+        conn.execute(
+            "DELETE FROM sessions WHERE expires_at <= ?1",
+            (now.clone(),),
+        )
+        .await?;
 
         let mut rows = conn
             .query(
@@ -244,6 +246,54 @@ impl Db {
             .await?
             .ok_or_else(|| AppError::BadRequest("vault write failed".to_string()))
     }
+
+    pub async fn execute_admin_sql(
+        &self,
+        sql: &str,
+        max_rows: usize,
+    ) -> Result<AdminSqlResponse, AppError> {
+        let conn = self.database.connect()?;
+        conn.busy_timeout(Duration::from_secs(5))?;
+        let mut stmt = conn.prepare(sql).await?;
+        let columns = stmt.column_names();
+
+        if columns.is_empty() {
+            let rows_affected = stmt.execute(()).await?;
+            return Ok(AdminSqlResponse {
+                columns,
+                rows: Vec::new(),
+                rows_affected: Some(rows_affected),
+                row_count: rows_affected as usize,
+                truncated: false,
+            });
+        }
+
+        let column_count = columns.len();
+        let mut rows = stmt.query(()).await?;
+        let mut collected = Vec::new();
+        let mut truncated = false;
+
+        while let Some(row) = rows.next().await? {
+            if collected.len() >= max_rows {
+                truncated = true;
+                break;
+            }
+
+            let mut values = Vec::with_capacity(column_count);
+            for index in 0..column_count {
+                values.push(sql_value_to_json(row.get_value(index)?));
+            }
+            collected.push(values);
+        }
+
+        Ok(AdminSqlResponse {
+            columns,
+            row_count: collected.len(),
+            rows: collected,
+            rows_affected: None,
+            truncated,
+        })
+    }
 }
 
 fn now_string() -> String {
@@ -281,6 +331,19 @@ fn optional_string(row: &Row, index: usize) -> Result<Option<String>, AppError> 
         value => Err(AppError::BadRequest(format!(
             "expected text or null at column {index}, got {value:?}"
         ))),
+    }
+}
+
+fn sql_value_to_json(value: Value) -> serde_json::Value {
+    match value {
+        Value::Null => serde_json::Value::Null,
+        Value::Integer(value) => json!(value),
+        Value::Real(value) => json!(value),
+        Value::Text(value) => json!(value),
+        Value::Blob(value) => json!({
+            "type": "blob",
+            "base64": STANDARD.encode(value)
+        }),
     }
 }
 
