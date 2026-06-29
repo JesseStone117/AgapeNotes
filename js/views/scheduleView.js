@@ -721,7 +721,11 @@ const ScheduleView = {
             this._refreshCalendarBackground();
 
             if (!reminderSynced && reminder.enabled) {
-                await Dialog.alert('The meeting was saved, but the reminder could not be scheduled on this device.', 'Reminder Not Scheduled');
+                const reason = typeof ReminderManager !== 'undefined' ? ReminderManager.lastFailureMessage() : '';
+                const message = reason
+                    ? `The meeting was saved, but the reminder could not be scheduled. ${reason}`
+                    : 'The meeting was saved, but the reminder could not be scheduled on this device.';
+                await Dialog.alert(message, 'Reminder Not Scheduled');
             }
         });
     },

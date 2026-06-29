@@ -347,7 +347,7 @@ const SettingsView = {
             return;
         }
         if (!status.configured) {
-            statusEl.textContent = 'Reminder push notifications are not configured on the server yet.';
+            statusEl.textContent = 'Reminder push notifications are not configured correctly on the server yet.';
             actionsEl.innerHTML = '';
             return;
         }

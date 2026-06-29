@@ -1,4 +1,8 @@
 use anyhow::{Context, Result};
+use base64::{
+    Engine as _,
+    engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD},
+};
 use std::{env, net::SocketAddr};
 
 #[derive(Debug, Clone)]
@@ -85,7 +89,25 @@ impl Config {
     }
 
     pub fn push_reminders_configured(&self) -> bool {
-        self.vapid_public_key.is_some() && self.vapid_private_key_pem.is_some()
+        self.has_valid_vapid_public_key() && self.vapid_private_key_pem.is_some()
+    }
+
+    fn has_valid_vapid_public_key(&self) -> bool {
+        self.vapid_public_key
+            .as_deref()
+            .is_some_and(is_valid_vapid_public_key)
+    }
+}
+
+fn is_valid_vapid_public_key(value: &str) -> bool {
+    let trimmed = value.trim();
+    let decoded = URL_SAFE_NO_PAD
+        .decode(trimmed)
+        .or_else(|_| URL_SAFE.decode(trimmed));
+
+    match decoded {
+        Ok(bytes) => bytes.len() == 65 && bytes.first() == Some(&4),
+        Err(_) => false,
     }
 }
 
@@ -106,4 +128,23 @@ fn optional_multiline_env(key: &str) -> Option<String> {
 
 fn trim_trailing_slash(value: String) -> String {
     value.trim_end_matches('/').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_browser_vapid_public_key_format() {
+        let mut bytes = vec![4];
+        bytes.extend(1u8..=64);
+        let key = URL_SAFE_NO_PAD.encode(bytes);
+
+        assert!(is_valid_vapid_public_key(&key));
+    }
+
+    #[test]
+    fn rejects_short_hex_like_public_key() {
+        assert!(!is_valid_vapid_public_key("152cad7bf68bfbd53af5b94d123c99fd"));
+    }
 }

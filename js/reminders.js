@@ -8,6 +8,7 @@
 
 const ReminderManager = {
     _publicKey: null,
+    _lastFailureMessage: '',
 
     isSupported() {
         return (
@@ -40,46 +41,74 @@ const ReminderManager = {
         };
     },
 
-    async ensureReadyForMeetingReminders() {
+    lastFailureMessage() {
+        return this._lastFailureMessage;
+    },
+
+    async ensureReadyForMeetingReminders({ showAlerts = true } = {}) {
+        this._lastFailureMessage = '';
+
         if (!this.isSupported()) {
-            await Dialog.alert('This browser does not support PWA push notifications.', 'Reminders Unavailable');
-            return false;
+            return this._fail(
+                'This browser does not support PWA push notifications.',
+                'Reminders Unavailable',
+                showAlerts
+            );
         }
 
         const publicKey = await this._getPublicKey();
         if (!publicKey) {
-            await Dialog.alert('Reminder push notifications are not configured on the server yet.', 'Reminders Unavailable');
-            return false;
+            return this._fail(
+                'Reminder push notifications are not configured correctly on the server yet.',
+                'Reminders Unavailable',
+                showAlerts
+            );
         }
 
         if (Notification.permission === 'denied') {
-            await Dialog.alert('Notifications are blocked for AgapeNotes. Enable them in your browser settings to receive meeting reminders.', 'Notifications Blocked');
-            return false;
+            return this._fail(
+                'Notifications are blocked for AgapeNotes. Enable them in your browser settings to receive meeting reminders.',
+                'Notifications Blocked',
+                showAlerts
+            );
         }
 
         if (Notification.permission !== 'granted') {
             const permission = await Notification.requestPermission();
             if (permission !== 'granted') {
-                await Dialog.alert('Meeting saved, but notifications were not enabled.', 'Reminder Not Enabled');
-                return false;
+                return this._fail(
+                    'Notifications were not enabled.',
+                    'Reminder Not Enabled',
+                    showAlerts
+                );
             }
         }
 
         const registration = await this._getReadyRegistration();
         if (!registration) {
-            await Dialog.alert('Install or refresh the AgapeNotes PWA before enabling push reminders.', 'PWA Required');
-            return false;
-        }
-        let subscription = await registration.pushManager.getSubscription();
-        if (!subscription) {
-            subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: this._urlBase64ToUint8Array(publicKey)
-            });
+            return this._fail(
+                'Install or refresh the AgapeNotes PWA before enabling push reminders.',
+                'PWA Required',
+                showAlerts
+            );
         }
 
-        await ApiClient.savePushSubscription(subscription.toJSON());
-        return true;
+        try {
+            let subscription = await registration.pushManager.getSubscription();
+            if (!subscription) {
+                subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: this._urlBase64ToUint8Array(publicKey)
+                });
+            }
+
+            await ApiClient.savePushSubscription(subscription.toJSON());
+            this._lastFailureMessage = '';
+            return true;
+        } catch (error) {
+            console.warn('Could not enable meeting reminders:', error);
+            return this._fail(this._friendlySetupError(error), 'Reminder Not Enabled', showAlerts);
+        }
     },
 
     async disableForDevice() {
@@ -104,7 +133,7 @@ const ReminderManager = {
             return true;
         }
 
-        const ready = await this.ensureReadyForMeetingReminders();
+        const ready = await this.ensureReadyForMeetingReminders({ showAlerts: false });
         if (!ready) return false;
 
         await ApiClient.saveMeetingReminders(meeting.id, reminders);
@@ -118,7 +147,7 @@ const ReminderManager = {
             return true;
         }
 
-        const ready = await this.ensureReadyForMeetingReminders();
+        const ready = await this.ensureReadyForMeetingReminders({ showAlerts: false });
         if (!ready) return false;
 
         for (const meeting of meetings) {
@@ -206,12 +235,46 @@ const ReminderManager = {
         if (this._publicKey !== null) return this._publicKey;
         try {
             const config = await ApiClient.getPushConfig();
-            this._publicKey = config?.publicKey || '';
+            const publicKey = config?.publicKey || '';
+            this._publicKey = this._isValidVapidPublicKey(publicKey) ? publicKey : '';
+            if (publicKey && !this._publicKey) {
+                console.warn('Server returned an invalid VAPID public key.');
+            }
             return this._publicKey;
         } catch (error) {
             console.warn('Could not load push configuration:', error);
             this._publicKey = '';
             return '';
+        }
+    },
+
+    async _fail(message, title, showAlerts) {
+        this._lastFailureMessage = message;
+        if (showAlerts) {
+            await Dialog.alert(message, title);
+        }
+        return false;
+    },
+
+    _friendlySetupError(error) {
+        if (error?.name === 'InvalidAccessError') {
+            return 'The server push key is invalid. Update VAPID_PUBLIC_KEY with a browser PushManager public key.';
+        }
+        if (error?.name === 'NotAllowedError') {
+            return 'Notifications are blocked or were not allowed on this device.';
+        }
+        if (error?.name === 'AbortError') {
+            return 'This browser could not create a push subscription. Refresh the installed PWA and try again.';
+        }
+        return 'This device could not create or save a push subscription.';
+    },
+
+    _isValidVapidPublicKey(publicKey) {
+        try {
+            const bytes = this._urlBase64ToUint8Array(publicKey || '');
+            return bytes.length === 65 && bytes[0] === 4;
+        } catch (error) {
+            return false;
         }
     },
 
