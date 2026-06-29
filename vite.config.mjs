@@ -6,10 +6,6 @@ import { defineConfig } from 'vite';
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(rootDir, 'dist');
 const passthroughDirs = ['icons', 'js', 'styles'];
-const passthroughExcludes = new Set([
-    'js/pinAuth.js',
-    'js/components/pinScreen.js'
-]);
 const rootAssets = ['manifest.json'];
 const buildId = process.env.VITE_APP_BUILD_ID || new Date().toISOString();
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:10000';
@@ -21,10 +17,6 @@ function copyDirectory(source, destination) {
     for (const entry of readdirSync(source, { withFileTypes: true })) {
         const from = join(source, entry.name);
         const to = join(destination, entry.name);
-        const relativeSourcePath = relative(rootDir, from).replaceAll('\\', '/');
-        if (passthroughExcludes.has(relativeSourcePath)) {
-            continue;
-        }
 
         if (entry.isDirectory()) {
             copyDirectory(from, to);

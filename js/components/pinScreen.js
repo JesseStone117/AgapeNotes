@@ -15,6 +15,7 @@ const PinScreen = {
     isDrawing: false,
     currentPos: { x: 0, y: 0 },
     onSuccess: null,
+    options: {},
     isSetupMode: false,
     setupPattern: null,
     isConfirmMode: false,
@@ -29,8 +30,9 @@ const PinScreen = {
      * Show the pattern lock screen
      * @param {Function} onSuccess - Callback when pattern is correct
      */
-    show(onSuccess) {
+    show(onSuccess, options = {}) {
         this.onSuccess = onSuccess;
+        this.options = options;
         this.isSetupMode = false;
         this.isConfirmMode = false;
         this._createScreen();
@@ -40,8 +42,9 @@ const PinScreen = {
      * Show pattern setup screen
      * @param {Function} onComplete - Callback with new pattern
      */
-    showSetup(onComplete) {
+    showSetup(onComplete, options = {}) {
         this.onSuccess = onComplete;
+        this.options = options;
         this.isSetupMode = true;
         this.isConfirmMode = false;
         this.setupPattern = null;
@@ -105,6 +108,9 @@ const PinScreen = {
                 ${this.isSetupMode ? `
                     <button class="btn btn-ghost pattern-cancel" id="pattern-cancel">Cancel</button>
                 ` : ''}
+                ${!this.isSetupMode && this.options.fallbackLabel ? `
+                    <button class="btn btn-ghost pattern-cancel" id="pattern-fallback">${this._escapeHtml(this.options.fallbackLabel)}</button>
+                ` : ''}
             </div>
         `;
     },
@@ -167,7 +173,20 @@ const PinScreen = {
         // Cancel button
         const cancelBtn = document.getElementById('pattern-cancel');
         if (cancelBtn) {
-            cancelBtn.addEventListener('click', () => this._close());
+            cancelBtn.addEventListener('click', () => {
+                const onCancel = this.options.onCancel;
+                this._close();
+                if (onCancel) onCancel();
+            });
+        }
+
+        const fallbackBtn = document.getElementById('pattern-fallback');
+        if (fallbackBtn) {
+            fallbackBtn.addEventListener('click', () => {
+                const onFallback = this.options.onFallback;
+                this._close();
+                if (onFallback) onFallback();
+            });
         }
     },
 
@@ -385,7 +404,7 @@ const PinScreen = {
             this._showSuccess();
             setTimeout(() => {
                 this._close();
-                if (this.onSuccess) this.onSuccess();
+                if (this.onSuccess) this.onSuccess(pattern);
             }, 400);
         } else {
             this._showError('Incorrect pattern');

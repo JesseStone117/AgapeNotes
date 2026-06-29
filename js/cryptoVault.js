@@ -52,7 +52,8 @@ const CryptoVault = {
         return {
             crypto: cryptoMetadata,
             ciphertext,
-            dekKey
+            dekKey,
+            dekBytes: this._bytesToBase64(dekBytes)
         };
     },
 
@@ -66,18 +67,12 @@ const CryptoVault = {
             salt,
             metadata.kdf.iterations
         );
-        const dekBytes = await crypto.subtle.decrypt(
+        const dekBytes = new Uint8Array(await crypto.subtle.decrypt(
             { name: 'AES-GCM', iv: this._base64ToBytes(metadata.keyWrap.nonce) },
             wrappingKey,
             this._base64ToBytes(metadata.keyWrap.ciphertext)
-        );
-        const dekKey = await crypto.subtle.importKey(
-            'raw',
-            dekBytes,
-            { name: 'AES-GCM' },
-            false,
-            ['encrypt', 'decrypt']
-        );
+        ));
+        const dekKey = await this.importDekKey(dekBytes);
         const plaintext = await crypto.subtle.decrypt(
             { name: 'AES-GCM', iv: this._base64ToBytes(metadata.data.nonce) },
             dekKey,
@@ -87,8 +82,23 @@ const CryptoVault = {
         return {
             data: JSON.parse(new TextDecoder().decode(plaintext)),
             dekKey,
+            dekBytes: this._bytesToBase64(dekBytes),
             crypto: metadata
         };
+    },
+
+    async importDekKey(dekBytes) {
+        const rawBytes = typeof dekBytes === 'string'
+            ? this._base64ToBytes(dekBytes)
+            : dekBytes;
+
+        return crypto.subtle.importKey(
+            'raw',
+            rawBytes,
+            { name: 'AES-GCM' },
+            false,
+            ['encrypt', 'decrypt']
+        );
     },
 
     async decryptWithDek(vault, vaultState) {
@@ -136,11 +146,17 @@ const CryptoVault = {
     },
 
     promptExistingPassphrase() {
-        return window.prompt('Enter your AgapeNotes vault passphrase:') || '';
+        return window.prompt(
+            'Enter your AgapeNotes vault passphrase. If you forget it, AgapeNotes cannot recover or reset access to your encrypted data.'
+        ) || '';
     },
 
     promptNewPassphrase() {
-        const first = window.prompt('Create an AgapeNotes vault passphrase. Keep it somewhere safe; it cannot be recovered.') || '';
+        window.alert(
+            'IMPORTANT: Save this passphrase in a password manager or another safe place. If you forget it, you will lose access to all encrypted AgapeNotes data. AgapeNotes cannot recover it for you.'
+        );
+
+        const first = window.prompt('Create an AgapeNotes vault passphrase:') || '';
         if (!first) return '';
         if (first.length < this.MIN_PASSPHRASE_LENGTH) {
             window.alert(`Use at least ${this.MIN_PASSPHRASE_LENGTH} characters for your vault passphrase.`);
@@ -152,6 +168,11 @@ const CryptoVault = {
             window.alert('Vault passphrases did not match.');
             return '';
         }
+
+        const saved = window.confirm(
+            'Have you saved this passphrase somewhere safe? If you forget it, your encrypted data cannot be recovered.'
+        );
+        if (!saved) return '';
 
         return first;
     },

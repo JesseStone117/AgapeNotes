@@ -82,6 +82,25 @@ const SettingsView = {
                 </button>
             </div>
 
+            <!-- Device Unlock Section -->
+            <div class="settings-section">
+                <h3 class="settings-section-title">Device Unlock</h3>
+                <div class="settings-item">
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Swipe Pattern</div>
+                        <div class="settings-item-desc" id="device-unlock-status">
+                            ${this._deviceUnlockStatusText()}
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap; justify-content: flex-end;">
+                        <button class="btn btn-secondary" id="configure-device-unlock-btn">
+                            ${storage.hasDeviceUnlock?.() ? 'Change Pattern' : 'Set Pattern'}
+                        </button>
+                        ${storage.hasDeviceUnlock?.() ? '<button class="btn btn-ghost" id="clear-device-unlock-btn">Remove</button>' : ''}
+                    </div>
+                </div>
+            </div>
+
             <!-- Stats Section -->
             <div class="settings-section">
                 <h3 class="settings-section-title">Statistics</h3>
@@ -285,6 +304,18 @@ const SettingsView = {
         }
     },
 
+    _deviceUnlockStatusText() {
+        if (!storage.isRemoteUnlocked?.()) {
+            return 'Unlock your vault with the passphrase before setting a device pattern.';
+        }
+
+        if (storage.hasDeviceUnlock?.()) {
+            return 'This device can unlock the vault with a swipe pattern. Keep your passphrase saved for new devices and recovery.';
+        }
+
+        return 'Set a swipe pattern for this device after entering your passphrase once.';
+    },
+
     /**
      * Bind event handlers
      * @private
@@ -362,6 +393,37 @@ const SettingsView = {
         if (darkModeToggle) {
             darkModeToggle.addEventListener('change', (e) => {
                 ThemeManager.setTheme(e.target.checked ? 'dark' : 'light');
+            });
+        }
+
+        const configureDeviceUnlockBtn = document.getElementById('configure-device-unlock-btn');
+        if (configureDeviceUnlockBtn) {
+            configureDeviceUnlockBtn.addEventListener('click', async () => {
+                try {
+                    const saved = await storage.configureDeviceUnlock();
+                    if (saved) {
+                        await Dialog.alert('Swipe pattern saved for this device.', 'Device Unlock');
+                        this.render();
+                    }
+                } catch (error) {
+                    console.error('Failed to configure device unlock:', error);
+                    await Dialog.alert('Unlock the vault before setting a swipe pattern.', 'Device Unlock');
+                }
+            });
+        }
+
+        const clearDeviceUnlockBtn = document.getElementById('clear-device-unlock-btn');
+        if (clearDeviceUnlockBtn) {
+            clearDeviceUnlockBtn.addEventListener('click', async () => {
+                const confirmed = await Dialog.confirm(
+                    'Remove swipe-pattern unlock from this device? Your vault data on the server will not be changed.',
+                    'Remove Device Unlock'
+                );
+                if (!confirmed) return;
+
+                storage.clearDeviceUnlock();
+                await Dialog.alert('Swipe pattern removed from this device.', 'Device Unlock');
+                this.render();
             });
         }
 

@@ -134,9 +134,12 @@
             return true;
         }
 
+        const canUsePatternUnlock = typeof storage.canUsePatternUnlock === 'function' && storage.canUsePatternUnlock();
         renderAuthScreen({
             title: 'Unlock Vault',
-            message: 'Enter your vault passphrase to decrypt your notes on this device.',
+            message: canUsePatternUnlock
+                ? 'Draw your swipe pattern to unlock this device, or use your vault passphrase.'
+                : 'Enter your vault passphrase to decrypt your notes on this device. Save it somewhere safe; it cannot be recovered if forgotten.',
             action: 'Unlock Vault',
             onAction: async () => {
                 try {

@@ -433,6 +433,20 @@ class RemoteVaultStorageAdapter extends DataAdapter {
         return 'unavailable';
     }
 
+    canUsePatternUnlock() {
+        const userId = this.getRemoteUser()?.id;
+        return !!(
+            userId &&
+            typeof PinAuth !== 'undefined' &&
+            typeof PinAuth.hasVaultUnlock === 'function' &&
+            PinAuth.hasVaultUnlock(userId)
+        );
+    }
+
+    hasDeviceUnlock() {
+        return this.canUsePatternUnlock();
+    }
+
     async unlockRemoteVault() {
         if (typeof ApiClient === 'undefined' || typeof CryptoVault === 'undefined') {
             throw new Error('Encrypted vault support is not loaded.');
@@ -446,24 +460,14 @@ class RemoteVaultStorageAdapter extends DataAdapter {
         const vault = await ApiClient.getVault();
 
         if (vault.exists) {
-            const passphrase = CryptoVault.promptExistingPassphrase();
-            if (!passphrase) return false;
-
-            const decrypted = await CryptoVault.decryptVault(vault, passphrase);
-            const needsMigration = decrypted.data?.version !== STORAGE_VERSION;
-            this.data = this._normalizeVaultData(decrypted.data);
-            this.vaultState = {
-                dekKey: decrypted.dekKey,
-                crypto: decrypted.crypto
-            };
-            this.remoteRevision = vault.revision;
-            this.mode = 'remote';
-
-            if (needsMigration) {
-                await this._persistRemote();
+            if (this.canUsePatternUnlock() && typeof PinScreen !== 'undefined') {
+                const unlockedWithPattern = await this._unlockExistingVaultWithPattern(vault);
+                if (unlockedWithPattern) {
+                    return true;
+                }
             }
 
-            return true;
+            return this._unlockExistingVaultWithPassphrase(vault);
         }
 
         const passphrase = CryptoVault.promptNewPassphrase();
@@ -479,13 +483,120 @@ class RemoteVaultStorageAdapter extends DataAdapter {
 
         this.vaultState = {
             dekKey: encrypted.dekKey,
-            crypto: saved.crypto || encrypted.crypto
+            crypto: saved.crypto || encrypted.crypto,
+            dekBytes: encrypted.dekBytes
         };
         this.remoteRevision = saved.revision;
         this.mode = 'remote';
         this._updateRemoteVaultSummary(saved);
+        await this._maybeSetDevicePattern(encrypted.dekBytes);
 
         return true;
+    }
+
+    async configureDeviceUnlock() {
+        this._assertUnlocked();
+        return this._setDevicePattern(this.vaultState.dekBytes);
+    }
+
+    clearDeviceUnlock() {
+        const userId = this.getRemoteUser()?.id;
+        if (userId && typeof PinAuth !== 'undefined' && typeof PinAuth.clearVaultUnlock === 'function') {
+            PinAuth.clearVaultUnlock(userId);
+        }
+    }
+
+    async _unlockExistingVaultWithPattern(vault) {
+        return new Promise(resolve => {
+            PinScreen.show(async (pattern) => {
+                try {
+                    const userId = this.getRemoteUser()?.id;
+                    const dekBytes = await PinAuth.unlockVaultDek(userId, pattern);
+                    const dekKey = await CryptoVault.importDekKey(dekBytes);
+                    const decrypted = await CryptoVault.decryptWithDek(vault, { dekKey });
+                    decrypted.dekBytes = dekBytes;
+                    await this._completeVaultUnlock(vault, decrypted);
+                    resolve(true);
+                } catch (error) {
+                    console.error('Pattern vault unlock failed:', error);
+                    this.clearDeviceUnlock();
+                    window.alert('This swipe pattern can no longer unlock the vault on this device. Please use your vault passphrase.');
+                    resolve(false);
+                }
+            }, {
+                fallbackLabel: 'Use Passphrase',
+                onFallback: () => resolve(false)
+            });
+        });
+    }
+
+    async _unlockExistingVaultWithPassphrase(vault) {
+        const passphrase = CryptoVault.promptExistingPassphrase();
+        if (!passphrase) return false;
+
+        const decrypted = await CryptoVault.decryptVault(vault, passphrase);
+        await this._completeVaultUnlock(vault, decrypted);
+        await this._maybeSetDevicePattern(decrypted.dekBytes);
+        return true;
+    }
+
+    async _completeVaultUnlock(vault, decrypted) {
+        const needsMigration = decrypted.data?.version !== STORAGE_VERSION;
+        const hadDefaultSupporter = this._hasDefaultSupporter(decrypted.data);
+        this.data = this._normalizeVaultData(decrypted.data);
+        this.vaultState = {
+            dekKey: decrypted.dekKey,
+            crypto: decrypted.crypto,
+            dekBytes: decrypted.dekBytes
+        };
+        this.remoteRevision = vault.revision;
+        this.mode = 'remote';
+
+        if (needsMigration || hadDefaultSupporter) {
+            await this._persistRemote();
+        }
+    }
+
+    async _maybeSetDevicePattern(dekBytes) {
+        const userId = this.getRemoteUser()?.id;
+        if (
+            !userId ||
+            !dekBytes ||
+            typeof PinAuth === 'undefined' ||
+            typeof PinScreen === 'undefined' ||
+            PinAuth.hasVaultUnlock(userId)
+        ) {
+            return false;
+        }
+
+        const shouldSetPattern = window.confirm(
+            'Set a swipe pattern for this device? Future unlocks on this device can use the pattern instead of your vault passphrase. Your notes stay encrypted on the server, and you still need the passphrase for new devices or recovery.'
+        );
+        if (!shouldSetPattern) return false;
+
+        return this._setDevicePattern(dekBytes);
+    }
+
+    async _setDevicePattern(dekBytes) {
+        const userId = this.getRemoteUser()?.id;
+        if (!userId || typeof PinAuth === 'undefined' || typeof PinScreen === 'undefined') {
+            return false;
+        }
+
+        return new Promise(resolve => {
+            PinScreen.showSetup(async (pattern) => {
+                try {
+                    await PinAuth.setVaultUnlock(userId, pattern, dekBytes);
+                    resolve(true);
+                } catch (error) {
+                    console.error('Failed to save device unlock pattern:', error);
+                    window.alert('Could not save the swipe pattern for this device.');
+                    resolve(false);
+                }
+            }, {
+                onCancel: () => resolve(false)
+            });
+        });
     }
 
     lockRemoteVault() {
@@ -667,7 +778,9 @@ class RemoteVaultStorageAdapter extends DataAdapter {
             ...data,
             staff: Array.isArray(data.staff) ? data.staff : [],
             students: Array.isArray(data.students) ? data.students : [],
-            supporters: Array.isArray(data.supporters) ? data.supporters : [],
+            supporters: Array.isArray(data.supporters)
+                ? data.supporters.filter(person => !this._isDefaultSupporter(person))
+                : [],
             discipleshipTopics: Array.isArray(data.discipleshipTopics) ? data.discipleshipTopics : [],
             meetings: Array.isArray(data.meetings) ? data.meetings : [],
             personal: {
@@ -688,6 +801,44 @@ class RemoteVaultStorageAdapter extends DataAdapter {
             ...normalized,
             version: STORAGE_VERSION
         };
+    }
+
+    _hasDefaultSupporter(data) {
+        return Array.isArray(data?.supporters) && data.supporters.some(person => this._isDefaultSupporter(person));
+    }
+
+    _isDefaultSupporter(person) {
+        const firstName = String(person?.firstName || '').trim().toLowerCase();
+        const lastName = String(person?.lastName || '').trim().toLowerCase();
+        if (firstName !== 'jesse' || lastName !== 'stone') {
+            return false;
+        }
+
+        const categoryFields = [
+            person.profilePicture,
+            person.basicInfo?.phone,
+            person.basicInfo?.email,
+            person.basicInfo?.occupation,
+            person.basicInfo?.birthday,
+            person.basicInfo?.family,
+            person.basicInfo?.church,
+            person.basicInfo?.howIKnowThem,
+            person.basicInfo?.mailingAddress,
+            person.supportInfo?.monthlyAmount,
+            person.supportInfo?.startDate
+        ];
+        const listFields = [
+            person.timeline,
+            person.funFacts,
+            person.notes,
+            person.prayerRequests,
+            person.actionPlans,
+            person.growthPlans
+        ];
+
+        const hasMeaningfulField = categoryFields.some(value => String(value || '').trim());
+        const hasMeaningfulList = listFields.some(value => Array.isArray(value) && value.length > 0);
+        return !hasMeaningfulField && !hasMeaningfulList;
     }
 
     _updateRemoteVaultSummary(saved) {
