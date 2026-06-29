@@ -374,3 +374,72 @@
     color: var(--color-gold);
     flex-shrink: 0;
 }
+
+@media (min-width: 1024px) {
+    .schedule-view {
+        padding-bottom: 0;
+    }
+
+    .cal-header {
+        padding: 0 0 var(--spacing-md);
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .cal-month-label {
+        font-size: var(--font-size-2xl);
+    }
+
+    .cal-today-btn {
+        margin-bottom: var(--spacing-lg);
+    }
+
+    .cal-dow-row,
+    .cal-grid {
+        gap: var(--spacing-xs);
+    }
+
+    .cal-dow-cell {
+        padding: var(--spacing-sm) 0;
+    }
+
+    .cal-cell {
+        aspect-ratio: auto;
+        min-height: clamp(112px, 10vw, 148px);
+        padding: var(--spacing-sm);
+        border-radius: var(--radius-md);
+    }
+
+    .cal-day-num {
+        font-size: var(--font-size-sm);
+        margin-bottom: var(--spacing-xs);
+    }
+
+    .cal-day-meetings {
+        gap: 3px;
+    }
+
+    .cal-meeting-pill {
+        font-size: var(--font-size-xs);
+        padding: 2px var(--spacing-xs);
+        border-radius: var(--radius-sm);
+    }
+
+    .cal-meeting-more {
+        font-size: var(--font-size-xs);
+        padding: 0 var(--spacing-xs);
+    }
+
+    .day-meeting-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: var(--spacing-md);
+    }
+
+    .day-meeting-item {
+        min-height: 96px;
+    }
+
+    .meeting-detail-card {
+        padding: var(--spacing-lg);
+    }
+}

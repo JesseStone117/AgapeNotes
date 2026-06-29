@@ -7,6 +7,7 @@
 const NotesView = {
     container: null,
     listContainer: null,
+    desktopPanel: null,
 
     /**
      * Render the notes view
@@ -25,6 +26,11 @@ const NotesView = {
 
         // Render category tabs
         CategoryTabs.render(this.container);
+
+        // Desktop-only context panel. CSS hides it on mobile.
+        this.desktopPanel = document.createElement('aside');
+        this.desktopPanel.className = 'notes-desktop-panel';
+        this.container.appendChild(this.desktopPanel);
 
         // Create list container
         this.listContainer = document.createElement('div');
@@ -76,6 +82,7 @@ const NotesView = {
 
         // Filter out archived contacts
         const activePeople = people.filter(p => !p.isArchived);
+        this._renderDesktopPanel(category, people, activePeople);
 
         if (category === Categories.SUPPORTERS) {
             this.listContainer.appendChild(this._createSupportSummary(activePeople));
@@ -108,6 +115,50 @@ const NotesView = {
         });
 
         this.listContainer.appendChild(list);
+    },
+
+    _renderDesktopPanel(category, allPeople, activePeople) {
+        if (!this.desktopPanel) return;
+
+        const categoryLabel = CategoryLabels[category] || 'People';
+        const singularLabel = categoryLabel.endsWith('s') ? categoryLabel.slice(0, -1) : categoryLabel;
+        const archivedCount = Math.max(0, allPeople.length - activePeople.length);
+        const pinnedCount = activePeople.filter(person => person.isPinned).length;
+        const supportTotal = category === Categories.SUPPORTERS
+            ? getCumulativeMonthlySupport(activePeople)
+            : null;
+
+        this.desktopPanel.innerHTML = `
+            <div class="notes-panel-eyebrow">Current List</div>
+            <h2 class="notes-panel-title">${categoryLabel}</h2>
+            <div class="notes-panel-stats" aria-label="${categoryLabel} statistics">
+                <div class="notes-panel-stat">
+                    <span class="notes-panel-stat-value">${activePeople.length}</span>
+                    <span class="notes-panel-stat-label">Active</span>
+                </div>
+                <div class="notes-panel-stat">
+                    <span class="notes-panel-stat-value">${pinnedCount}</span>
+                    <span class="notes-panel-stat-label">Pinned</span>
+                </div>
+                <div class="notes-panel-stat">
+                    <span class="notes-panel-stat-value">${archivedCount}</span>
+                    <span class="notes-panel-stat-label">Archived</span>
+                </div>
+            </div>
+            ${supportTotal !== null ? `
+                <div class="notes-panel-support">
+                    <span class="notes-panel-support-label">Monthly Support</span>
+                    <strong>${formatCurrencyAmount(supportTotal)} <span>/month</span></strong>
+                </div>
+            ` : ''}
+            <button class="btn btn-primary btn-full notes-panel-add" data-notes-desktop-add>
+                Add ${singularLabel}
+            </button>
+        `;
+
+        this.desktopPanel.querySelector('[data-notes-desktop-add]')?.addEventListener('click', () => {
+            PersonDetail.showAdd(category);
+        });
     },
 
     _createSupportSummary(people) {
