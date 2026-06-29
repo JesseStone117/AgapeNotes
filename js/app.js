@@ -12,6 +12,9 @@
      */
     async function init() {
         try {
+            const isAuthenticated = await requireGoogleAuthentication();
+            if (!isAuthenticated) return;
+
             // Check if PIN is set and show PIN screen first
             if (PinAuth.hasPin()) {
                 // Hide app content until PIN is entered
@@ -36,6 +39,16 @@
         // Initialize storage
         await storage.initialize();
 
+        const vaultReady = await requireRemoteVault();
+        if (!vaultReady) return;
+
+        await bootApp();
+    }
+
+    /**
+     * Core app startup once auth and vault requirements are satisfied.
+     */
+    async function bootApp() {
         // Load data into state
         await refreshPeopleData();
 
@@ -56,15 +69,6 @@
 
         // Render initial view
         NotesView.render();
-
-        // Add some demo data if empty (remove in production)
-        const total = appState.get('staff').length +
-            appState.get('students').length +
-            appState.get('supporters').length;
-
-        if (total === 0) {
-            await addDemoData();
-        }
 
         // Re-lock app when returning from background
         let pinAuthenticated = true; // just authenticated on load
@@ -89,39 +93,129 @@
     }
 
     /**
-     * Add demo data for first-time users
+     * Require a Google session before any app functionality is shown.
      */
-    async function addDemoData() {
-        const demoPeople = [
-            {
-                category: Categories.SUPPORTERS,
-                data: {
-                    id: Date.now().toString(),
-                    firstName: 'Jesse',
-                    lastName: 'Stone',
-                    basicInfo: {
-                        phone: '',
-                        email: '',
-                        major: '',
-                        occupation: '',
-                        birthday: '',
-                        family: 'Me',
-                        church: ''
-                    },
-                    ministryPlan: {},
-                    timeline: [],
-                    funFacts: ['League of Legends'],
-                    notes: []
-                }
-            }
-        ];
-
-        for (const { category, data } of demoPeople) {
-            await storage.savePerson(category, data);
+    async function requireGoogleAuthentication() {
+        if (typeof ApiClient === 'undefined' || typeof storage.refreshRemoteSession !== 'function') {
+            renderAuthScreen({
+                title: 'AgapeNotes',
+                message: 'The AgapeNotes server is not available yet.',
+                action: 'Retry',
+                onAction: () => window.location.reload()
+            });
+            return false;
         }
 
-        await refreshPeopleData();
-        NotesView.renderPersonList();
+        try {
+            await storage.refreshRemoteSession();
+        } catch (error) {
+            console.error('Failed to check Google session:', error);
+        }
+
+        if (storage.isRemoteAuthenticated()) {
+            exitAuthMode();
+            return true;
+        }
+
+        if (!storage.remoteAvailable) {
+            renderAuthScreen({
+                title: 'AgapeNotes',
+                message: 'The AgapeNotes server is not reachable yet.',
+                action: 'Retry',
+                onAction: () => window.location.reload()
+            });
+            return false;
+        }
+
+        renderAuthScreen({
+            title: 'AgapeNotes',
+            message: 'Sign in to access your encrypted ministry notes.',
+            action: 'Continue with Google',
+            onAction: () => ApiClient.signInWithGoogle(),
+            showGoogleMark: true
+        });
+        return false;
+    }
+
+    /**
+     * Require the encrypted vault to be unlocked before rendering the app.
+     */
+    async function requireRemoteVault() {
+        if (!storage.isRemoteAuthenticated()) {
+            return false;
+        }
+
+        if (storage.isRemoteUnlocked()) {
+            exitAuthMode();
+            return true;
+        }
+
+        renderAuthScreen({
+            title: 'Unlock Vault',
+            message: 'Enter your vault passphrase to decrypt your notes on this device.',
+            action: 'Unlock Vault',
+            onAction: async () => {
+                try {
+                    const unlocked = await storage.unlockRemoteVault();
+                    if (unlocked) {
+                        exitAuthMode();
+                        await bootApp();
+                    }
+                } catch (error) {
+                    console.error('Vault unlock failed:', error);
+                    renderAuthScreen({
+                        title: 'Vault Locked',
+                        message: 'That vault could not be unlocked. Check your passphrase and try again.',
+                        action: 'Try Again',
+                        onAction: async () => {
+                            const unlocked = await storage.unlockRemoteVault();
+                            if (unlocked) {
+                                exitAuthMode();
+                                await bootApp();
+                            }
+                        }
+                    });
+                }
+            }
+        });
+        return false;
+    }
+
+    function renderAuthScreen({ title, message, action, onAction, showGoogleMark = false }) {
+        const app = document.getElementById('app');
+        const main = document.getElementById('main-content');
+        const headerAction = document.getElementById('header-action');
+
+        app.classList.add('auth-mode');
+        if (headerAction) headerAction.innerHTML = '';
+
+        main.className = 'main-content auth-content animate-fade-in';
+        main.innerHTML = `
+            <section class="auth-screen" aria-labelledby="auth-title">
+                <div class="auth-panel">
+                    <div class="auth-brand">Agape<span>Notes</span></div>
+                    <h1 class="auth-title" id="auth-title">${escapeHtml(title)}</h1>
+                    <p class="auth-message">${escapeHtml(message)}</p>
+                    <button class="auth-google-btn" id="auth-primary-action">
+                        ${showGoogleMark ? '<span class="auth-google-mark" aria-hidden="true">G</span>' : ''}
+                        <span>${escapeHtml(action)}</span>
+                    </button>
+                </div>
+            </section>
+        `;
+
+        document.getElementById('auth-primary-action')?.addEventListener('click', onAction);
+    }
+
+    function exitAuthMode() {
+        const app = document.getElementById('app');
+        app.classList.remove('auth-mode');
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        return div.innerHTML;
     }
 
     // Wait for DOM to be ready

@@ -214,6 +214,114 @@ body {
     padding-bottom: calc(var(--bottom-nav-height) + var(--spacing-xl));
 }
 
+#app.auth-mode {
+    max-width: none;
+}
+
+#app.auth-mode .app-header,
+#app.auth-mode .bottom-nav {
+    display: none;
+}
+
+#app.auth-mode .auth-content {
+    min-height: 100vh;
+    padding: 0;
+}
+
+.auth-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-xl);
+    background:
+        radial-gradient(circle at top left, var(--color-gold-subtle), transparent 32rem),
+        var(--color-background);
+}
+
+.auth-panel {
+    width: min(100%, 420px);
+    padding: var(--spacing-xl);
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+}
+
+.auth-brand {
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-text);
+    margin-bottom: var(--spacing-xl);
+}
+
+.auth-brand span {
+    color: var(--color-gold);
+}
+
+.auth-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text);
+    line-height: var(--line-height-tight);
+    margin-bottom: var(--spacing-sm);
+}
+
+.auth-message {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-relaxed);
+    margin-bottom: var(--spacing-xl);
+}
+
+.auth-google-btn {
+    width: 100%;
+    min-height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    transition:
+        background-color var(--transition-base),
+        border-color var(--transition-base),
+        transform var(--transition-fast),
+        box-shadow var(--transition-base);
+}
+
+.auth-google-btn:hover {
+    background: var(--color-surface-hover);
+    border-color: var(--color-gold);
+    box-shadow: var(--shadow-sm);
+}
+
+.auth-google-btn:active {
+    transform: scale(0.98);
+}
+
+.auth-google-mark {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    background: #FFFFFF;
+    color: #4285F4;
+    border: 1px solid var(--color-border);
+    font-weight: var(--font-weight-bold);
+    line-height: 1;
+}
+
 /* =====================================================
    Animation Keyframes
    ===================================================== */
