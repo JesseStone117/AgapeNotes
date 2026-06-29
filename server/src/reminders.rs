@@ -139,6 +139,7 @@ async fn send_web_push(state: &AppState, endpoint: &str) -> Result<(), PushSendE
         .header("TTL", "300")
         .header("Urgency", "normal")
         .header("Authorization", format!("vapid t={token}, k={public_key}"))
+        .body(Vec::new())
         .send()
         .await
         .map_err(|err| PushSendError::Other(err.to_string()))?;
@@ -154,7 +155,13 @@ async fn send_web_push(state: &AppState, endpoint: &str) -> Result<(), PushSendE
                 .text()
                 .await
                 .unwrap_or_else(|_| "response body unavailable".to_string());
-            let detail = body.chars().take(300).collect::<String>();
+            let detail = body
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .take(180)
+                .collect::<String>();
             Err(PushSendError::Other(format!(
                 "push service returned {status}: {detail}"
             )))
