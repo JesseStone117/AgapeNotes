@@ -139,13 +139,29 @@ self.addEventListener('push', (event) => {
         badge: payload.badge || '/icons/icon-192.svg',
         tag: payload.tag || 'agapenotes-meeting-reminder',
         renotify: true,
+        timestamp: Date.now(),
+        vibrate: [120, 80, 120],
         data: {
             url: payload.url || '/'
         }
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    event.waitUntil(showReminderNotification(title, options));
 });
+
+async function showReminderNotification(title, options) {
+    try {
+        await self.registration.showNotification(title, options);
+    } catch (error) {
+        console.warn('Notification with icon failed; retrying minimal notification.', error);
+        const fallbackOptions = {
+            ...options,
+            icon: undefined,
+            badge: undefined
+        };
+        await self.registration.showNotification(title, fallbackOptions);
+    }
+}
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();

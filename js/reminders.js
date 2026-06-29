@@ -103,7 +103,13 @@ const ReminderManager = {
             const applicationServerKey = this._urlBase64ToUint8Array(publicKey);
             let subscription = await registration.pushManager.getSubscription();
             if (subscription && !this._subscriptionUsesPublicKey(subscription, publicKey)) {
+                const previousEndpoint = subscription.endpoint;
                 await subscription.unsubscribe();
+                try {
+                    await ApiClient.deletePushSubscription(previousEndpoint);
+                } catch (error) {
+                    console.warn('Could not remove stale push subscription on server:', error);
+                }
                 subscription = null;
             }
 
@@ -279,7 +285,7 @@ const ReminderManager = {
     _subscriptionUsesPublicKey(subscription, publicKey) {
         try {
             const actual = subscription?.options?.applicationServerKey;
-            if (!actual) return true;
+            if (!actual) return false;
 
             const actualBytes = actual instanceof Uint8Array
                 ? actual
