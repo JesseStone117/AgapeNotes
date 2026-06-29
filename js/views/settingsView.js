@@ -101,6 +101,20 @@ const SettingsView = {
                 </div>
             </div>
 
+            <!-- Schedule Section -->
+            <div class="settings-section">
+                <h3 class="settings-section-title">Schedule</h3>
+                <div class="settings-item settings-timezone-item">
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Time Zone</div>
+                        <div class="settings-item-desc" id="timezone-status">Loading time zone...</div>
+                    </div>
+                    <div class="settings-actions">
+                        <select class="form-input settings-select" id="timezone-select"></select>
+                    </div>
+                </div>
+            </div>
+
             <!-- Reminder Section -->
             <div class="settings-section">
                 <h3 class="settings-section-title">Reminders</h3>
@@ -110,6 +124,12 @@ const SettingsView = {
                         <div class="settings-item-desc" id="reminder-status">Checking reminder status...</div>
                     </div>
                     <div class="settings-actions" id="reminder-actions"></div>
+                </div>
+                <div class="settings-item settings-status-card">
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Delivery Status</div>
+                        <div class="settings-item-desc" id="reminder-diagnostics">Checking delivery status...</div>
+                    </div>
                 </div>
             </div>
 
@@ -176,6 +196,7 @@ const SettingsView = {
         this._updateStats();
         this._updateSyncStatus();
         this._updateAccountSection();
+        this._updateTimeZoneSection();
         this._updateReminderSection();
 
         // Bind handlers
@@ -317,6 +338,104 @@ const SettingsView = {
         }
     },
 
+    async _updateTimeZoneSection() {
+        const select = document.getElementById('timezone-select');
+        const status = document.getElementById('timezone-status');
+        if (!select || !status) return;
+
+        if (!storage.isRemoteUnlocked?.() || typeof storage.getSettings !== 'function') {
+            select.innerHTML = '';
+            select.disabled = true;
+            status.textContent = 'Unlock the encrypted vault before changing schedule settings.';
+            return;
+        }
+
+        const settings = await storage.getSettings();
+        const current = this._validTimeZone(settings.timeZone)
+            ? settings.timeZone
+            : this._localTimeZone();
+        select.innerHTML = this._timeZoneOptions(current);
+        select.value = current;
+        select.disabled = false;
+        status.textContent = this._timeZoneStatusText(current);
+
+        select.onchange = async () => {
+            const nextTimeZone = select.value;
+            if (!this._validTimeZone(nextTimeZone)) return;
+
+            select.disabled = true;
+            try {
+                await storage.saveSettings({ timeZone: nextTimeZone });
+                let remindersSynced = true;
+                if (typeof ReminderManager !== 'undefined') {
+                    const meetings = await storage.getMeetings();
+                    remindersSynced = await ReminderManager.syncMeetings(meetings);
+                }
+
+                status.textContent = this._timeZoneStatusText(nextTimeZone);
+                if (!remindersSynced) {
+                    await Dialog.alert('Time zone saved, but existing meeting reminders could not be resynced on this device.', 'Time Zone');
+                }
+            } catch (error) {
+                console.error('Could not save time zone:', error);
+                await Dialog.alert('Could not save the time zone setting.', 'Time Zone');
+                await this._updateTimeZoneSection();
+            } finally {
+                select.disabled = false;
+            }
+        };
+    },
+
+    _timeZoneOptions(current) {
+        const zones = this._availableTimeZones();
+        if (!zones.includes(current)) zones.unshift(current);
+
+        return zones.map(zone => `
+            <option value="${this._escapeHtml(zone)}">${this._escapeHtml(this._timeZoneLabel(zone))}</option>
+        `).join('');
+    },
+
+    _availableTimeZones() {
+        if (typeof Intl.supportedValuesOf === 'function') {
+            return Intl.supportedValuesOf('timeZone');
+        }
+
+        return [
+            'America/New_York',
+            'America/Chicago',
+            'America/Denver',
+            'America/Los_Angeles',
+            'America/Anchorage',
+            'Pacific/Honolulu',
+            'UTC'
+        ];
+    },
+
+    _timeZoneLabel(timeZone) {
+        return timeZone.replace(/_/g, ' ');
+    },
+
+    _timeZoneStatusText(timeZone) {
+        const local = this._localTimeZone();
+        return timeZone === local
+            ? `Using ${timeZone}`
+            : `Using ${timeZone}; this device is ${local}`;
+    },
+
+    _localTimeZone() {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    },
+
+    _validTimeZone(timeZone) {
+        if (!timeZone || typeof timeZone !== 'string') return false;
+        try {
+            new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+            return true;
+        } catch {
+            return false;
+        }
+    },
+
     _deviceUnlockStatusText() {
         if (!storage.isRemoteUnlocked?.()) {
             return 'Unlock your vault with the passphrase before setting a device pattern.';
@@ -337,6 +456,7 @@ const SettingsView = {
         if (typeof ReminderManager === 'undefined') {
             statusEl.textContent = 'PWA reminders are not loaded.';
             actionsEl.innerHTML = '';
+            this._setReminderDiagnostics('Reminder diagnostics are not loaded.');
             return;
         }
 
@@ -344,25 +464,32 @@ const SettingsView = {
         if (!status.supported) {
             statusEl.textContent = 'This browser does not support PWA push reminders.';
             actionsEl.innerHTML = '';
+            this._setReminderDiagnostics('This browser cannot receive PWA push reminders.');
             return;
         }
         if (!status.configured) {
             statusEl.textContent = 'Reminder push notifications are not configured correctly on the server yet.';
             actionsEl.innerHTML = '';
+            this._setReminderDiagnostics('Server push configuration is incomplete.');
             return;
         }
         if (status.permission === 'denied') {
             statusEl.textContent = 'Notifications are blocked in this browser.';
             actionsEl.innerHTML = '';
+            this._setReminderDiagnostics('Notifications are blocked on this device.');
             return;
         }
 
-        statusEl.textContent = status.subscribed
+        statusEl.textContent = status.staleSubscription
+            ? 'This device has an old push subscription. Enable again to refresh it.'
+            : status.subscribed
             ? 'This device can receive meeting reminders.'
             : 'Enable notifications on this device to receive meeting reminders.';
         actionsEl.innerHTML = status.subscribed
-            ? '<button class="btn btn-ghost" id="disable-reminders-btn">Turn Off</button>'
+            ? '<button class="btn btn-secondary" id="test-reminders-btn">Send Test</button><button class="btn btn-ghost" id="disable-reminders-btn">Turn Off</button>'
             : '<button class="btn btn-secondary" id="enable-reminders-btn">Enable</button>';
+
+        await this._updateReminderDiagnostics();
 
         document.getElementById('enable-reminders-btn')?.addEventListener('click', async () => {
             const enabled = await ReminderManager.ensureReadyForMeetingReminders();
@@ -377,6 +504,73 @@ const SettingsView = {
             if (!confirmed) return;
             await ReminderManager.disableForDevice();
             await this._updateReminderSection();
+        });
+
+        document.getElementById('test-reminders-btn')?.addEventListener('click', async () => {
+            try {
+                const result = await ReminderManager.sendTestNotification();
+                if (!result) return;
+                await this._updateReminderDiagnostics();
+                await Dialog.alert(this._pushTestMessage(result), 'Test Reminder');
+            } catch (error) {
+                console.error('Test reminder failed:', error);
+                await Dialog.alert(error?.message || 'The server could not send a test reminder.', 'Test Reminder');
+            }
+        });
+    },
+
+    async _updateReminderDiagnostics() {
+        if (typeof ReminderManager === 'undefined') return;
+
+        try {
+            const diagnostics = await ReminderManager.getDiagnostics();
+            this._setReminderDiagnostics(this._reminderDiagnosticsText(diagnostics));
+        } catch (error) {
+            console.warn('Could not load reminder diagnostics:', error);
+            this._setReminderDiagnostics('Reminder delivery status is unavailable.');
+        }
+    },
+
+    _setReminderDiagnostics(text) {
+        const el = document.getElementById('reminder-diagnostics');
+        if (el) el.textContent = text;
+    },
+
+    _reminderDiagnosticsText(diagnostics) {
+        const count = diagnostics?.subscriptionCount || 0;
+        const reminders = diagnostics?.reminders || [];
+        if (reminders.length === 0) {
+            return `${count} device subscription${count === 1 ? '' : 's'}; no scheduled reminders yet.`;
+        }
+
+        const latest = reminders[0];
+        return `${count} device subscription${count === 1 ? '' : 's'}; latest reminder is ${latest.status} for ${this._formatReminderTime(latest.remindAt)}.`;
+    },
+
+    _pushTestMessage(result) {
+        const sent = result?.sentCount || 0;
+        const failed = result?.failedCount || 0;
+        const stale = result?.staleCount || 0;
+        const total = result?.subscriptionCount || 0;
+
+        if (sent > 0 && failed === 0 && stale === 0) {
+            return 'The server accepted a test push for this device. If nothing appears, check Android notification settings for AgapeNotes or Chrome.';
+        }
+
+        const errors = Array.isArray(result?.errors) && result.errors.length > 0
+            ? ` ${result.errors.join(' ')}`
+            : '';
+        return `Push test result: ${sent} sent, ${failed} failed, ${stale} stale, ${total} total subscriptions.${errors}`;
+    },
+
+    _formatReminderTime(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value || 'unknown time';
+        return date.toLocaleString([], {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
         });
     },
 

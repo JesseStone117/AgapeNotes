@@ -27,17 +27,23 @@ const ReminderManager = {
                 supported: false,
                 configured: false,
                 permission: 'unsupported',
-                subscribed: false
+                subscribed: false,
+                staleSubscription: false
             };
         }
 
-        const configured = !!(await this._getPublicKey());
+        const publicKey = await this._getPublicKey();
+        const configured = !!publicKey;
         const subscription = configured ? await this._getSubscription() : null;
+        const matchesKey = subscription
+            ? this._subscriptionUsesPublicKey(subscription, publicKey)
+            : false;
         return {
             supported: true,
             configured,
             permission: Notification.permission,
-            subscribed: !!subscription
+            subscribed: !!subscription && matchesKey,
+            staleSubscription: !!subscription && !matchesKey
         };
     },
 
@@ -94,11 +100,17 @@ const ReminderManager = {
         }
 
         try {
+            const applicationServerKey = this._urlBase64ToUint8Array(publicKey);
             let subscription = await registration.pushManager.getSubscription();
+            if (subscription && !this._subscriptionUsesPublicKey(subscription, publicKey)) {
+                await subscription.unsubscribe();
+                subscription = null;
+            }
+
             if (!subscription) {
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: this._urlBase64ToUint8Array(publicKey)
+                    applicationServerKey
                 });
             }
 
@@ -127,7 +139,8 @@ const ReminderManager = {
     },
 
     async syncMeeting(meeting) {
-        const reminders = this._buildReminderRecords(meeting);
+        const timeZone = await this._getPreferredTimeZone();
+        const reminders = this._buildReminderRecords(meeting, timeZone);
         if (reminders.length === 0) {
             await ApiClient.deleteMeetingReminders(meeting.id);
             return true;
@@ -141,7 +154,8 @@ const ReminderManager = {
     },
 
     async syncMeetings(meetings) {
-        const meetingsWithReminders = meetings.filter(meeting => this._buildReminderRecords(meeting).length > 0);
+        const timeZone = await this._getPreferredTimeZone();
+        const meetingsWithReminders = meetings.filter(meeting => this._buildReminderRecords(meeting, timeZone).length > 0);
         if (meetingsWithReminders.length === 0) {
             await Promise.all(meetings.map(meeting => ApiClient.deleteMeetingReminders(meeting.id)));
             return true;
@@ -151,7 +165,7 @@ const ReminderManager = {
         if (!ready) return false;
 
         for (const meeting of meetings) {
-            const reminders = this._buildReminderRecords(meeting);
+            const reminders = this._buildReminderRecords(meeting, timeZone);
             if (reminders.length > 0) {
                 await ApiClient.saveMeetingReminders(meeting.id, reminders);
             } else {
@@ -175,6 +189,16 @@ const ReminderManager = {
         }
     },
 
+    async sendTestNotification() {
+        const ready = await this.ensureReadyForMeetingReminders();
+        if (!ready) return null;
+        return ApiClient.sendTestPush();
+    },
+
+    async getDiagnostics() {
+        return ApiClient.getReminderStatus();
+    },
+
     describeReminder(reminder) {
         const normalized = normalizeMeetingReminder(reminder);
         if (!normalized.enabled) return 'No reminder';
@@ -189,29 +213,33 @@ const ReminderManager = {
         return `${offset} minutes before`;
     },
 
-    _buildReminderRecords(meeting) {
+    _buildReminderRecords(meeting, timeZone = this._deviceTimeZone()) {
         const reminder = normalizeMeetingReminder(meeting?.reminder);
         if (!meeting?.id || !meeting.date || !meeting.time || !reminder.enabled) return [];
 
-        const remindAt = this._calculateRemindAt(meeting, reminder);
+        const remindAt = this._calculateRemindAt(meeting, reminder, timeZone);
         if (!remindAt) return [];
 
         return [{
             remindAt: remindAt.toISOString(),
             meetingDate: meeting.date,
             meetingTime: meeting.time,
-            offsetMinutes: reminder.offsetMinutes
+            offsetMinutes: reminder.offsetMinutes,
+            timeZone
         }];
     },
 
-    _calculateRemindAt(meeting, reminder) {
+    _calculateRemindAt(meeting, reminder, timeZone = this._deviceTimeZone()) {
         if (reminder.mode === 'custom') {
             if (!reminder.customDateTime) return null;
-            const custom = new Date(reminder.customDateTime);
+            const customParts = this._splitDateTimeInput(reminder.customDateTime);
+            const custom = customParts
+                ? this._dateTimeInTimeZone(customParts.date, customParts.time, timeZone)
+                : new Date(reminder.customDateTime);
             return Number.isNaN(custom.getTime()) ? null : custom;
         }
 
-        const startsAt = new Date(`${meeting.date}T${meeting.time}`);
+        const startsAt = this._dateTimeInTimeZone(meeting.date, meeting.time, timeZone);
         if (Number.isNaN(startsAt.getTime())) return null;
         const offsetMinutes = Number(reminder.offsetMinutes || 0);
         return new Date(startsAt.getTime() - offsetMinutes * 60 * 1000);
@@ -246,6 +274,141 @@ const ReminderManager = {
             this._publicKey = '';
             return '';
         }
+    },
+
+    _subscriptionUsesPublicKey(subscription, publicKey) {
+        try {
+            const actual = subscription?.options?.applicationServerKey;
+            if (!actual) return true;
+
+            const actualBytes = actual instanceof Uint8Array
+                ? actual
+                : new Uint8Array(actual);
+            const expectedBytes = this._urlBase64ToUint8Array(publicKey);
+            return this._bytesEqual(actualBytes, expectedBytes);
+        } catch (error) {
+            console.warn('Could not compare push subscription key:', error);
+            return false;
+        }
+    },
+
+    _bytesEqual(left, right) {
+        if (!left || !right || left.length !== right.length) return false;
+        for (let i = 0; i < left.length; i += 1) {
+            if (left[i] !== right[i]) return false;
+        }
+        return true;
+    },
+
+    async _getPreferredTimeZone() {
+        try {
+            if (typeof storage !== 'undefined' && typeof storage.getSettings === 'function') {
+                const settings = await storage.getSettings();
+                if (this._isValidTimeZone(settings?.timeZone)) {
+                    return settings.timeZone;
+                }
+            }
+        } catch (error) {
+            console.warn('Could not load reminder timezone setting:', error);
+        }
+        return this._deviceTimeZone();
+    },
+
+    _deviceTimeZone() {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    },
+
+    _isValidTimeZone(timeZone) {
+        if (!timeZone || typeof timeZone !== 'string') return false;
+        try {
+            new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+            return true;
+        } catch {
+            return false;
+        }
+    },
+
+    _dateTimeInTimeZone(dateStr, timeStr, timeZone) {
+        const parsed = this._parseDateAndTime(dateStr, timeStr);
+        if (!parsed || !this._isValidTimeZone(timeZone)) {
+            return new Date(`${dateStr}T${timeStr}`);
+        }
+
+        const targetMillis = Date.UTC(
+            parsed.year,
+            parsed.month - 1,
+            parsed.day,
+            parsed.hour,
+            parsed.minute,
+            0,
+            0
+        );
+        let utcMillis = targetMillis;
+
+        for (let i = 0; i < 4; i += 1) {
+            const actual = this._partsInTimeZone(new Date(utcMillis), timeZone);
+            const actualMillis = Date.UTC(
+                actual.year,
+                actual.month - 1,
+                actual.day,
+                actual.hour,
+                actual.minute,
+                0,
+                0
+            );
+            const diff = actualMillis - targetMillis;
+            if (diff === 0) break;
+            utcMillis -= diff;
+        }
+
+        return new Date(utcMillis);
+    },
+
+    _partsInTimeZone(date, timeZone) {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone,
+            hourCycle: 'h23',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        const parts = {};
+        for (const part of formatter.formatToParts(date)) {
+            if (part.type !== 'literal') parts[part.type] = part.value;
+        }
+
+        return {
+            year: Number(parts.year),
+            month: Number(parts.month),
+            day: Number(parts.day),
+            hour: Number(parts.hour),
+            minute: Number(parts.minute)
+        };
+    },
+
+    _parseDateAndTime(dateStr, timeStr) {
+        const dateMatch = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const timeMatch = String(timeStr || '').match(/^(\d{2}):(\d{2})/);
+        if (!dateMatch || !timeMatch) return null;
+
+        return {
+            year: Number(dateMatch[1]),
+            month: Number(dateMatch[2]),
+            day: Number(dateMatch[3]),
+            hour: Number(timeMatch[1]),
+            minute: Number(timeMatch[2])
+        };
+    },
+
+    _splitDateTimeInput(value) {
+        const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+        if (!match) return null;
+        return {
+            date: match[1],
+            time: match[2]
+        };
     },
 
     async _fail(message, title, showAlerts) {

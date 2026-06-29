@@ -1,8 +1,8 @@
 use crate::{
     error::AppError,
     models::{
-        AdminSqlResponse, DueReminder, GoogleIdentity, MeetingReminderInput, PushSubscriptionRecord,
-        PushSubscriptionRequest, User, VaultRecord,
+        AdminSqlResponse, DueReminder, GoogleIdentity, MeetingReminderInput,
+        PushSubscriptionRecord, PushSubscriptionRequest, ReminderStatusItem, User, VaultRecord,
     },
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -378,6 +378,21 @@ impl Db {
         Ok(subscriptions)
     }
 
+    pub async fn push_subscription_count_for_user(&self, user_id: &str) -> Result<usize, AppError> {
+        let conn = self.database.connect()?;
+        let mut rows = conn
+            .query(
+                "SELECT COUNT(*) FROM push_subscriptions WHERE user_id = ?1",
+                (user_id.to_string(),),
+            )
+            .await?;
+
+        match rows.next().await? {
+            Some(row) => Ok(row.get::<i64>(0)? as usize),
+            None => Ok(0),
+        }
+    }
+
     pub async fn replace_meeting_reminders(
         &self,
         user_id: &str,
@@ -442,6 +457,51 @@ impl Db {
         )
         .await?;
         Ok(())
+    }
+
+    pub async fn reminder_statuses_for_user(
+        &self,
+        user_id: &str,
+        limit: usize,
+    ) -> Result<Vec<ReminderStatusItem>, AppError> {
+        let conn = self.database.connect()?;
+        let mut rows = conn
+            .query(
+                "SELECT meeting_id, remind_at, meeting_date, meeting_time, offset_minutes,
+                        status, sent_at, failed_at, failure_count, updated_at
+                 FROM reminders
+                 WHERE user_id = ?1
+                 ORDER BY remind_at DESC
+                 LIMIT ?2",
+                (user_id.to_string(), limit as i64),
+            )
+            .await?;
+
+        let mut reminders = Vec::new();
+        while let Some(row) = rows.next().await? {
+            reminders.push(ReminderStatusItem {
+                meeting_id: row.get::<String>(0)?,
+                remind_at: row.get::<String>(1)?,
+                meeting_date: row.get::<String>(2)?,
+                meeting_time: row.get::<String>(3)?,
+                offset_minutes: match row.get_value(4)? {
+                    Value::Null => None,
+                    Value::Integer(value) => Some(value),
+                    value => {
+                        return Err(AppError::BadRequest(format!(
+                            "expected integer or null at column 4, got {value:?}"
+                        )));
+                    }
+                },
+                status: row.get::<String>(5)?,
+                sent_at: optional_string(&row, 6)?,
+                failed_at: optional_string(&row, 7)?,
+                failure_count: row.get::<i64>(8)?,
+                updated_at: row.get::<String>(9)?,
+            });
+        }
+
+        Ok(reminders)
     }
 
     pub async fn claim_due_reminders(&self, limit: usize) -> Result<Vec<DueReminder>, AppError> {

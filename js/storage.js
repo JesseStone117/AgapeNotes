@@ -13,6 +13,7 @@ function getDefaultData() {
     return {
         version: STORAGE_VERSION,
         lastSync: null,
+        settings: getDefaultSettings(),
         staff: [],
         students: [],
         supporters: [],
@@ -23,6 +24,31 @@ function getDefaultData() {
             tasks: []
         }
     };
+}
+
+function getDefaultSettings() {
+    return {
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    };
+}
+
+function normalizeSettings(settings = {}) {
+    const defaults = getDefaultSettings();
+    return {
+        ...defaults,
+        ...(settings && typeof settings === 'object' ? settings : {}),
+        timeZone: isValidTimeZone(settings?.timeZone) ? settings.timeZone : defaults.timeZone
+    };
+}
+
+function isValidTimeZone(timeZone) {
+    if (!timeZone || typeof timeZone !== 'string') return false;
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -80,6 +106,20 @@ class DataAdapter extends StorageService {
 
     async getAllData() {
         return { ...this.data };
+    }
+
+    async getSettings() {
+        this.data.settings = normalizeSettings(this.data.settings);
+        return { ...this.data.settings };
+    }
+
+    async saveSettings(settings) {
+        this.data.settings = normalizeSettings({
+            ...(this.data.settings || {}),
+            ...(settings || {})
+        });
+        await this._persist();
+        return { ...this.data.settings };
     }
 
     async getPeople(category) {
@@ -348,6 +388,8 @@ class DataAdapter extends StorageService {
         if (!oldData.personal) {
             oldData.personal = { growthPlans: [], tasks: [] };
         }
+
+        oldData.settings = normalizeSettings(oldData.settings);
 
         return {
             ...getDefaultData(),
@@ -660,6 +702,11 @@ class RemoteVaultStorageAdapter extends DataAdapter {
         return super.savePersonalData(personal);
     }
 
+    async saveSettings(settings) {
+        await this._ensureFreshBeforeWrite();
+        return super.saveSettings(settings);
+    }
+
     async deleteMeetings(meetingIds) {
         await this._ensureFreshBeforeWrite();
         return super.deleteMeetings(meetingIds);
@@ -781,6 +828,7 @@ class RemoteVaultStorageAdapter extends DataAdapter {
             supporters: Array.isArray(data.supporters)
                 ? data.supporters.filter(person => !this._isDefaultSupporter(person))
                 : [],
+            settings: normalizeSettings(data.settings),
             discipleshipTopics: Array.isArray(data.discipleshipTopics) ? data.discipleshipTopics : [],
             meetings: Array.isArray(data.meetings)
                 ? data.meetings.map(meeting => ({

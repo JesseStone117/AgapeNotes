@@ -83,6 +83,16 @@ pub struct DeletePushSubscriptionRequest {
     pub endpoint: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushTestResponse {
+    pub subscription_count: usize,
+    pub sent_count: usize,
+    pub failed_count: usize,
+    pub stale_count: usize,
+    pub errors: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveMeetingRemindersRequest {
@@ -108,6 +118,28 @@ pub struct DueReminder {
 #[derive(Debug, Clone)]
 pub struct PushSubscriptionRecord {
     pub endpoint: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReminderStatusItem {
+    pub meeting_id: String,
+    pub remind_at: String,
+    pub meeting_date: String,
+    pub meeting_time: String,
+    pub offset_minutes: Option<i64>,
+    pub status: String,
+    pub sent_at: Option<String>,
+    pub failed_at: Option<String>,
+    pub failure_count: i64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReminderStatusResponse {
+    pub subscription_count: usize,
+    pub reminders: Vec<ReminderStatusItem>,
 }
 
 #[derive(Debug, Serialize)]

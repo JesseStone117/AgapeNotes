@@ -85,11 +85,21 @@ const ApiClient = {
         });
     },
 
+    async sendTestPush() {
+        return this.request('/api/push/test', {
+            method: 'POST'
+        });
+    },
+
     async saveMeetingReminders(meetingId, reminders) {
         return this.request('/api/reminders/meeting', {
             method: 'POST',
             body: { meetingId, reminders }
         });
+    },
+
+    async getReminderStatus() {
+        return this.request('/api/reminders/status');
     },
 
     async deleteMeetingReminders(meetingId) {

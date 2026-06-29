@@ -1,4 +1,8 @@
-use crate::{error::AppError, models::DueReminder, routes::AppState};
+use crate::{
+    error::AppError,
+    models::{DueReminder, PushTestResponse},
+    routes::AppState,
+};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use reqwest::StatusCode;
@@ -44,7 +48,10 @@ async fn process_due_reminders(state: &AppState) -> Result<(), AppError> {
 }
 
 async fn process_one_reminder(state: &AppState, reminder: &DueReminder) -> Result<(), AppError> {
-    let subscriptions = state.db.push_subscriptions_for_user(&reminder.user_id).await?;
+    let subscriptions = state
+        .db
+        .push_subscriptions_for_user(&reminder.user_id)
+        .await?;
     if subscriptions.is_empty() {
         state.db.mark_reminder_failed(&reminder.id).await?;
         return Ok(());
@@ -79,8 +86,47 @@ enum PushSendError {
     Other(String),
 }
 
+pub async fn send_test_push(state: &AppState, user_id: &str) -> Result<PushTestResponse, AppError> {
+    if !state.config.push_reminders_configured() {
+        return Err(AppError::Config(
+            "push reminders are not configured correctly".to_string(),
+        ));
+    }
+
+    let subscriptions = state.db.push_subscriptions_for_user(user_id).await?;
+    let mut response = PushTestResponse {
+        subscription_count: subscriptions.len(),
+        sent_count: 0,
+        failed_count: 0,
+        stale_count: 0,
+        errors: Vec::new(),
+    };
+
+    for subscription in subscriptions {
+        match send_web_push(state, &subscription.endpoint).await {
+            Ok(()) => response.sent_count += 1,
+            Err(PushSendError::Gone) => {
+                response.stale_count += 1;
+                state
+                    .db
+                    .delete_push_subscription_by_endpoint(&subscription.endpoint)
+                    .await?;
+            }
+            Err(PushSendError::Other(error)) => {
+                response.failed_count += 1;
+                response.errors.push(error);
+            }
+        }
+    }
+
+    response.errors.sort();
+    response.errors.dedup();
+    Ok(response)
+}
+
 async fn send_web_push(state: &AppState, endpoint: &str) -> Result<(), PushSendError> {
-    let token = build_vapid_token(state, endpoint).map_err(|err| PushSendError::Other(err.to_string()))?;
+    let token =
+        build_vapid_token(state, endpoint).map_err(|err| PushSendError::Other(err.to_string()))?;
     let public_key = state
         .config
         .vapid_public_key
@@ -97,10 +143,22 @@ async fn send_web_push(state: &AppState, endpoint: &str) -> Result<(), PushSendE
         .await
         .map_err(|err| PushSendError::Other(err.to_string()))?;
 
-    match response.status() {
-        StatusCode::OK | StatusCode::CREATED | StatusCode::ACCEPTED | StatusCode::NO_CONTENT => Ok(()),
+    let status = response.status();
+    match status {
+        StatusCode::OK | StatusCode::CREATED | StatusCode::ACCEPTED | StatusCode::NO_CONTENT => {
+            Ok(())
+        }
         StatusCode::NOT_FOUND | StatusCode::GONE => Err(PushSendError::Gone),
-        status => Err(PushSendError::Other(format!("push service returned {status}"))),
+        status => {
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "response body unavailable".to_string());
+            let detail = body.chars().take(300).collect::<String>();
+            Err(PushSendError::Other(format!(
+                "push service returned {status}: {detail}"
+            )))
+        }
     }
 }
 

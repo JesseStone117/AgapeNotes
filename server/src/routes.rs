@@ -9,8 +9,8 @@ use crate::{
     error::AppError,
     models::{
         AdminSqlRequest, AdminSqlResponse, DeletePushSubscriptionRequest, PushConfigResponse,
-        PushSubscriptionRequest, PutVaultRequest, SaveMeetingRemindersRequest, User,
-        VaultResponse, VaultSummary,
+        PushSubscriptionRequest, PutVaultRequest, ReminderStatusResponse,
+        SaveMeetingRemindersRequest, User, VaultResponse, VaultSummary,
     },
 };
 use axum::{
@@ -51,6 +51,8 @@ pub fn router(state: AppState) -> Router {
             "/api/push/subscriptions",
             post(save_push_subscription).delete(delete_push_subscription),
         )
+        .route("/api/push/test", post(send_test_push))
+        .route("/api/reminders/status", get(reminder_status))
         .route("/api/reminders/meeting", post(save_meeting_reminders))
         .route(
             "/api/reminders/meeting/{meeting_id}",
@@ -260,6 +262,29 @@ async fn delete_push_subscription(
         .delete_push_subscription(&user.id, &payload.endpoint)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn send_test_push(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<crate::models::PushTestResponse>, AppError> {
+    let user = user_from_cookie(&state, &jar).await?;
+    let response = crate::reminders::send_test_push(&state, &user.id).await?;
+    Ok(Json(response))
+}
+
+async fn reminder_status(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<ReminderStatusResponse>, AppError> {
+    let user = user_from_cookie(&state, &jar).await?;
+    let subscription_count = state.db.push_subscription_count_for_user(&user.id).await?;
+    let reminders = state.db.reminder_statuses_for_user(&user.id, 25).await?;
+
+    Ok(Json(ReminderStatusResponse {
+        subscription_count,
+        reminders,
+    }))
 }
 
 async fn save_meeting_reminders(

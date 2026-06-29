@@ -711,6 +711,28 @@
     justify-content: flex-end;
 }
 
+.settings-select {
+    min-width: 220px;
+    max-width: min(360px, 48vw);
+}
+
+@media (max-width: 640px) {
+    .settings-timezone-item {
+        align-items: stretch;
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+
+    .settings-timezone-item .settings-actions {
+        justify-content: stretch;
+    }
+
+    .settings-select {
+        width: 100%;
+        max-width: none;
+    }
+}
+
 .settings-item-info {
     flex: 1;
 }
