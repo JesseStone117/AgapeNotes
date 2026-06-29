@@ -1,0 +1,376 @@
+/* =====================================================
+   Schedule View — Calendar & Meeting Styles
+   ===================================================== */
+
+.schedule-view {
+    padding-bottom: var(--spacing-lg);
+}
+
+/* ---- Calendar Header ---- */
+
+.cal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-sm) 0;
+    margin-bottom: var(--spacing-xs);
+}
+
+.cal-month-label {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text);
+    text-align: center;
+    flex: 1;
+}
+
+.cal-nav-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-secondary);
+    transition: background-color var(--transition-base), color var(--transition-base), transform var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.cal-nav-btn:hover {
+    background: var(--color-surface-hover);
+    color: var(--color-gold);
+}
+
+.cal-nav-btn:active {
+    transform: scale(0.92);
+}
+
+/* Today button */
+.cal-today-btn {
+    display: block;
+    margin: 0 auto var(--spacing-md) auto;
+    padding: var(--spacing-xs) var(--spacing-lg);
+    font-family: inherit;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-gold);
+    background: var(--color-gold-subtle);
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition: background-color var(--transition-base), transform var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.cal-today-btn:hover {
+    background: var(--color-gold-glow);
+}
+
+.cal-today-btn:active {
+    transform: scale(0.95);
+}
+
+/* ---- Day-of-week row ---- */
+
+.cal-dow-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    margin-bottom: 4px;
+}
+
+.cal-dow-cell {
+    text-align: center;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: var(--spacing-xs) 0;
+}
+
+/* ---- Calendar Grid ---- */
+
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+
+.cal-cell {
+    aspect-ratio: 1 / 1.15;
+    min-height: 54px;
+    background: var(--color-surface);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background-color var(--transition-base), transform var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+}
+
+.cal-cell:hover {
+    background: var(--color-surface-hover);
+}
+
+.cal-cell:active {
+    transform: scale(0.96);
+}
+
+.cal-cell-empty {
+    background: transparent;
+    cursor: default;
+}
+
+.cal-cell-empty:hover {
+    background: transparent;
+}
+
+.cal-cell-empty:active {
+    transform: none;
+}
+
+/* Today highlight */
+.cal-cell-today {
+    background: var(--color-gold-subtle);
+    border: 2px solid var(--color-gold);
+}
+
+.cal-cell-today:hover {
+    background: var(--color-gold-glow);
+}
+
+.cal-cell-today .cal-day-num {
+    color: var(--color-gold-dark);
+    font-weight: var(--font-weight-bold);
+}
+
+/* Past dates */
+.cal-cell-past {
+    opacity: 0.6;
+}
+
+.cal-cell-past:hover {
+    opacity: 0.8;
+}
+
+/* Day number */
+.cal-day-num {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text);
+    margin-bottom: 2px;
+    line-height: 1;
+}
+
+/* Meeting names in calendar cells */
+.cal-day-meetings {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    overflow: hidden;
+}
+
+.cal-meeting-pill {
+    font-size: 0.6rem;
+    line-height: 1.2;
+    color: var(--color-gold-dark);
+    background: var(--color-gold-subtle);
+    border-radius: 2px;
+    padding: 0 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: var(--font-weight-medium);
+}
+
+.cal-meeting-more {
+    font-size: 0.55rem;
+    color: var(--color-text-tertiary);
+    font-weight: var(--font-weight-semibold);
+    padding: 0 3px;
+}
+
+/* ---- Day Detail (Modal) ---- */
+
+.day-detail-view {
+    padding-bottom: var(--spacing-lg);
+}
+
+.day-meeting-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.day-meeting-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--color-surface);
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--color-gold);
+    cursor: pointer;
+    transition: background-color var(--transition-base), transform var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.day-meeting-item:hover {
+    background: var(--color-surface-hover);
+}
+
+.day-meeting-item:active {
+    transform: scale(0.98);
+}
+
+.day-meeting-time {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-gold);
+    white-space: nowrap;
+    min-width: 75px;
+}
+
+.day-meeting-info {
+    flex: 1;
+}
+
+.day-meeting-person {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text);
+    margin-bottom: 2px;
+}
+
+.day-meeting-location {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.day-meeting-notes {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+    font-style: italic;
+}
+
+.day-meeting-repeat {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    margin-top: 4px;
+}
+
+/* ---- Meeting Detail Card ---- */
+
+.meeting-detail-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.meeting-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+}
+
+.meeting-detail-label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-secondary);
+    flex-shrink: 0;
+}
+
+.meeting-detail-value {
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    text-align: right;
+}
+
+/* ---- Meeting Form ---- */
+
+.meeting-form {
+    padding-bottom: var(--spacing-lg);
+}
+
+.meeting-person-btn {
+    display: block !important;
+    width: 100%;
+    text-align: left !important;
+}
+
+/* ---- Next Meeting in Person Profile ---- */
+
+.next-meeting-section {
+    margin-bottom: var(--spacing-xl);
+}
+
+.next-meeting-card {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--color-gold-subtle);
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--color-gold);
+    cursor: pointer;
+    transition: background-color var(--transition-base), transform var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.next-meeting-card:hover {
+    background: var(--color-gold-glow);
+}
+
+.next-meeting-card:active {
+    transform: scale(0.98);
+}
+
+.next-meeting-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.next-meeting-info {
+    flex: 1;
+}
+
+.next-meeting-label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 2px;
+}
+
+.next-meeting-datetime {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text);
+}
+
+.next-meeting-details {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+}
+
+.next-meeting-arrow {
+    width: 20px;
+    height: 20px;
+    color: var(--color-gold);
+    flex-shrink: 0;
+}

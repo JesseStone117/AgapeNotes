@@ -1,0 +1,17 @@
+.modal-dragging {
+    transition: none !important;
+}
+
+.edit-sticky-actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-lg);
+    background: var(--color-background);
+    border-top: 1px solid var(--color-border-light);
+    position: sticky;
+    bottom: calc(-1 * var(--spacing-lg));
+    margin: var(--spacing-lg) calc(-1 * var(--spacing-lg)) calc(-1 * var(--spacing-lg)) calc(-1 * var(--spacing-lg));
+    z-index: 10;
+}
