@@ -43,6 +43,7 @@ npm run dev
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `ADMIN_SQL_TOKEN`: a long random bearer token for the admin SQL endpoint
+- `CODEX_ADMIN_SQL_TOKEN`: optional second bearer token for Codex-assisted admin SQL work
 
 Add this production callback URL to the Google OAuth client:
 

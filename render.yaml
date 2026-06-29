@@ -34,3 +34,5 @@ services:
         sync: false
       - key: ADMIN_SQL_TOKEN
         sync: false
+      - key: CODEX_ADMIN_SQL_TOKEN
+        sync: false

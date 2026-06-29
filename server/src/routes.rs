@@ -246,11 +246,14 @@ fn validate_vault_payload(payload: &PutVaultRequest) -> Result<(), AppError> {
 }
 
 fn require_admin_sql_token(state: &AppState, headers: &HeaderMap) -> Result<(), AppError> {
-    let expected = state
-        .config
-        .admin_sql_token
-        .as_deref()
-        .ok_or(AppError::NotFound)?;
+    let accepted_tokens = [
+        state.config.admin_sql_token.as_deref(),
+        state.config.codex_admin_sql_token.as_deref(),
+    ];
+    if accepted_tokens.iter().all(Option::is_none) {
+        return Err(AppError::NotFound);
+    }
+
     let authorization = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -259,7 +262,11 @@ fn require_admin_sql_token(state: &AppState, headers: &HeaderMap) -> Result<(), 
         .strip_prefix("Bearer ")
         .ok_or(AppError::Unauthorized)?;
 
-    if constant_time_eq(token.as_bytes(), expected.as_bytes()) {
+    if accepted_tokens
+        .iter()
+        .flatten()
+        .any(|expected| constant_time_eq(token.as_bytes(), expected.as_bytes()))
+    {
         Ok(())
     } else {
         Err(AppError::Unauthorized)
