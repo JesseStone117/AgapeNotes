@@ -135,11 +135,21 @@
         }
 
         const canUsePatternUnlock = typeof storage.canUsePatternUnlock === 'function' && storage.canUsePatternUnlock();
+        if (canUsePatternUnlock) {
+            try {
+                const unlocked = await storage.unlockRemoteVault();
+                if (unlocked) {
+                    exitAuthMode();
+                    return true;
+                }
+            } catch (error) {
+                console.error('Pattern vault unlock failed:', error);
+            }
+        }
+
         renderAuthScreen({
             title: 'Unlock Vault',
-            message: canUsePatternUnlock
-                ? 'Draw your swipe pattern to unlock this device, or use your vault passphrase.'
-                : 'Enter your vault passphrase to decrypt your notes on this device. Save it somewhere safe; it cannot be recovered if forgotten.',
+            message: 'Enter your vault passphrase to decrypt your notes on this device. Save it somewhere safe; it cannot be recovered if forgotten.',
             action: 'Unlock Vault',
             onAction: async () => {
                 try {
