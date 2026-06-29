@@ -386,19 +386,219 @@ class LocalStorageAdapter extends StorageService {
 }
 
 /**
- * Future: GoogleDriveAdapter
- * 
- * class GoogleDriveAdapter extends StorageService {
- *     constructor(authToken) {
- *         super();
- *         this.authToken = authToken;
- *     }
- *     
- *     async sync() {
- *         // Implement Google Drive sync logic
- *     }
- * }
+ * Hybrid Adapter - keeps local mode available and upgrades to an encrypted API
+ * vault after Google sign-in + passphrase unlock.
  */
+class HybridStorageAdapter extends LocalStorageAdapter {
+    constructor() {
+        super();
+        this.mode = 'local';
+        this.remoteSession = null;
+        this.remoteRevision = null;
+        this.vaultState = null;
+        this.remoteAvailable = false;
+    }
+
+    async initialize() {
+        const initialized = await super.initialize();
+        const shouldPromptForVault = this._consumeAuthSuccessFlag();
+        await this.refreshRemoteSession();
+
+        if (shouldPromptForVault && this.isRemoteAuthenticated()) {
+            try {
+                await this.unlockRemoteVault();
+            } catch (error) {
+                console.error('Failed to unlock remote vault after sign-in:', error);
+                window.alert('Google sign-in succeeded, but the encrypted vault was not unlocked.');
+            }
+        }
+
+        return initialized;
+    }
+
+    async refreshRemoteSession() {
+        if (typeof ApiClient === 'undefined') {
+            this.remoteAvailable = false;
+            this.remoteSession = null;
+            return null;
+        }
+
+        try {
+            this.remoteSession = await ApiClient.getMe();
+            this.remoteAvailable = true;
+            return this.remoteSession;
+        } catch (error) {
+            console.warn('AgapeNotes API is unavailable; staying in local mode.', error);
+            this.remoteAvailable = false;
+            this.remoteSession = null;
+            return null;
+        }
+    }
+
+    isRemoteAuthenticated() {
+        return !!this.remoteSession?.authenticated;
+    }
+
+    isRemoteUnlocked() {
+        return this.mode === 'remote';
+    }
+
+    getRemoteUser() {
+        return this.remoteSession?.user || null;
+    }
+
+    getRemoteVaultSummary() {
+        return this.remoteSession?.vault || null;
+    }
+
+    getStorageMode() {
+        if (this.isRemoteUnlocked()) return 'remote';
+        if (this.isRemoteAuthenticated()) return 'authenticated-local';
+        return 'local';
+    }
+
+    async unlockRemoteVault() {
+        if (typeof ApiClient === 'undefined' || typeof CryptoVault === 'undefined') {
+            throw new Error('Encrypted vault support is not loaded.');
+        }
+
+        await this.refreshRemoteSession();
+        if (!this.isRemoteAuthenticated()) {
+            throw new Error('Sign in before unlocking a remote vault.');
+        }
+
+        const vault = await ApiClient.getVault();
+
+        if (vault.exists) {
+            const passphrase = CryptoVault.promptExistingPassphrase();
+            if (!passphrase) return false;
+
+            const decrypted = await CryptoVault.decryptVault(vault, passphrase);
+            this.data = decrypted.data;
+            const needsMigration = this.data.version !== STORAGE_VERSION;
+            if (this.data.version !== STORAGE_VERSION) {
+                this.data = this._migrate(this.data);
+            }
+
+            this.vaultState = {
+                dekKey: decrypted.dekKey,
+                crypto: decrypted.crypto
+            };
+            this.remoteRevision = vault.revision;
+            this.mode = 'remote';
+
+            if (needsMigration) {
+                await this._persistRemote();
+            }
+
+            return true;
+        }
+
+        const passphrase = CryptoVault.promptNewPassphrase();
+        if (!passphrase) return false;
+
+        const encrypted = await CryptoVault.createEncryptedVault(this.data, passphrase);
+        const saved = await ApiClient.putVault({
+            expectedRevision: null,
+            crypto: encrypted.crypto,
+            ciphertext: encrypted.ciphertext
+        });
+
+        this.vaultState = {
+            dekKey: encrypted.dekKey,
+            crypto: saved.crypto || encrypted.crypto
+        };
+        this.remoteRevision = saved.revision;
+        this.mode = 'remote';
+        this.remoteSession.vault = {
+            exists: true,
+            revision: saved.revision,
+            updatedAt: saved.updatedAt
+        };
+
+        return true;
+    }
+
+    lockRemoteVault() {
+        this.mode = 'local';
+        this.remoteRevision = null;
+        this.vaultState = null;
+    }
+
+    async logoutRemote() {
+        if (typeof ApiClient !== 'undefined') {
+            await ApiClient.logout();
+        }
+
+        this.lockRemoteVault();
+        this.remoteSession = { authenticated: false, user: null, vault: null };
+    }
+
+    async _persist() {
+        if (this.isRemoteUnlocked()) {
+            return this._persistRemote();
+        }
+
+        return super._persist();
+    }
+
+    async _persistRemote() {
+        const encrypted = await CryptoVault.encryptWithDek(this.data, this.vaultState);
+        const saved = await ApiClient.putVault({
+            expectedRevision: this.remoteRevision,
+            crypto: encrypted.crypto,
+            ciphertext: encrypted.ciphertext
+        });
+
+        this.remoteRevision = saved.revision;
+        this.vaultState.crypto = saved.crypto || encrypted.crypto;
+        if (this.remoteSession) {
+            this.remoteSession.vault = {
+                exists: true,
+                revision: saved.revision,
+                updatedAt: saved.updatedAt
+            };
+        }
+
+        return true;
+    }
+
+    async exportData() {
+        return JSON.stringify(this.data, null, 2);
+    }
+
+    async importData(jsonString) {
+        try {
+            const imported = JSON.parse(jsonString);
+            if (imported.version && imported.staff && imported.students && imported.supporters) {
+                if (!imported.discipleshipTopics) imported.discipleshipTopics = [];
+                if (!imported.meetings) imported.meetings = [];
+                if (!imported.personal) imported.personal = { growthPlans: [], tasks: [] };
+                this.data = imported;
+                await this._persist();
+                return true;
+            }
+            throw new Error('Invalid data format');
+        } catch (error) {
+            console.error('Import failed:', error);
+            return false;
+        }
+    }
+
+    _consumeAuthSuccessFlag() {
+        try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.get('auth') !== 'success') return false;
+
+            url.searchParams.delete('auth');
+            const cleaned = `${url.pathname}${url.search}${url.hash}`;
+            window.history.replaceState({}, document.title, cleaned || '/');
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
 
 // Export singleton instance
-const storage = new LocalStorageAdapter();
+const storage = new HybridStorageAdapter();

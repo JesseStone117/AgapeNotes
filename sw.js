@@ -12,6 +12,8 @@ const STATIC_ASSETS = [
     '/js/pinAuth.js',
     '/js/theme.js',
     '/js/history.js',
+    '/js/apiClient.js',
+    '/js/cryptoVault.js',
     '/js/storage.js',
     '/js/models.js',
     '/js/state.js',
@@ -74,6 +76,9 @@ self.addEventListener('message', (event) => {
 self.addEventListener('fetch', (event) => {
     // Skip non-GET requests
     if (event.request.method !== 'GET') return;
+
+    const requestUrl = new URL(event.request.url);
+    if (requestUrl.pathname.startsWith('/api/')) return;
 
     // Honor explicit cache bypassing from the browser or developer tools
     if (event.request.cache === 'no-store' ||

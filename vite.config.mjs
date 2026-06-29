@@ -8,6 +8,7 @@ const outDir = resolve(rootDir, 'dist');
 const passthroughDirs = ['icons', 'js', 'styles'];
 const rootAssets = ['manifest.json'];
 const buildId = process.env.VITE_APP_BUILD_ID || new Date().toISOString();
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:10000';
 
 function copyDirectory(source, destination) {
     rmSync(destination, { recursive: true, force: true });
@@ -83,7 +84,10 @@ export default defineConfig({
         emptyOutDir: true
     },
     server: {
-        host: '127.0.0.1'
+        host: '127.0.0.1',
+        proxy: {
+            '/api': apiProxyTarget
+        }
     },
     preview: {
         host: '127.0.0.1'

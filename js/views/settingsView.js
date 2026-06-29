@@ -26,12 +26,13 @@ const SettingsView = {
             <!-- Account Section -->
             <div class="settings-section">
                 <h3 class="settings-section-title">Account</h3>
-                <div class="settings-item disabled">
-                    <div class="settings-item-info">
-                        <div class="settings-item-title">Google Account</div>
-                        <div class="settings-item-desc">Sign in to sync your data to Google Drive</div>
+                <div id="account-settings-panel">
+                    <div class="settings-item">
+                        <div class="settings-item-info">
+                            <div class="settings-item-title">Checking Account</div>
+                            <div class="settings-item-desc">Loading sign-in status...</div>
+                        </div>
                     </div>
-                    <span class="settings-badge">Coming Soon</span>
                 </div>
             </div>
 
@@ -187,6 +188,8 @@ const SettingsView = {
 
         // Update stats
         this._updateStats();
+        this._updateSyncStatus();
+        this._updateAccountSection();
 
         // Bind handlers
         this._bindHandlers();
@@ -206,6 +209,120 @@ const SettingsView = {
         document.getElementById('staff-count').textContent = staff.length.toString();
         document.getElementById('students-count').textContent = students.length.toString();
         document.getElementById('supporters-count').textContent = supporters.length.toString();
+    },
+
+    /**
+     * Update account controls after checking the API session.
+     * @private
+     */
+    async _updateAccountSection() {
+        const panel = document.getElementById('account-settings-panel');
+        if (!panel) return;
+
+        if (typeof ApiClient === 'undefined' || typeof storage.refreshRemoteSession !== 'function') {
+            panel.innerHTML = this._accountStatusHtml(
+                'Local Account',
+                'This build is running without the AgapeNotes server.',
+                ''
+            );
+            return;
+        }
+
+        await storage.refreshRemoteSession();
+        this._updateSyncStatus();
+
+        if (!storage.remoteAvailable) {
+            panel.innerHTML = this._accountStatusHtml(
+                'Server Unavailable',
+                'Local data is still available on this device.',
+                ''
+            );
+            return;
+        }
+
+        if (!storage.isRemoteAuthenticated()) {
+            panel.innerHTML = this._accountStatusHtml(
+                'Google Account',
+                'Sign in to use an end-to-end encrypted server vault.',
+                '<button class="btn btn-primary" id="google-sign-in-btn">Sign In</button>'
+            );
+            document.getElementById('google-sign-in-btn')?.addEventListener('click', () => {
+                ApiClient.signInWithGoogle();
+            });
+            return;
+        }
+
+        const user = storage.getRemoteUser();
+        const email = this._escapeHtml(user?.email || 'Signed in');
+        const isUnlocked = storage.isRemoteUnlocked();
+        const status = isUnlocked
+            ? 'Encrypted vault unlocked. Changes sync to the server.'
+            : 'Signed in. Unlock the encrypted vault to sync this device.';
+        const actions = isUnlocked
+            ? `
+                <button class="btn btn-secondary" id="lock-vault-btn">Lock Vault</button>
+                <button class="btn btn-ghost" id="google-sign-out-btn">Sign Out</button>
+            `
+            : `
+                <button class="btn btn-primary" id="unlock-vault-btn">Unlock Vault</button>
+                <button class="btn btn-ghost" id="google-sign-out-btn">Sign Out</button>
+            `;
+
+        panel.innerHTML = this._accountStatusHtml(email, status, actions);
+
+        document.getElementById('unlock-vault-btn')?.addEventListener('click', async () => {
+            try {
+                const unlocked = await storage.unlockRemoteVault();
+                if (!unlocked) return;
+                await refreshPeopleData();
+                this.render();
+            } catch (error) {
+                console.error('Vault unlock failed:', error);
+                await Dialog.alert('Could not unlock the encrypted vault. Check your passphrase and try again.', 'Vault Locked');
+            }
+        });
+
+        document.getElementById('lock-vault-btn')?.addEventListener('click', () => {
+            storage.lockRemoteVault();
+            this.render();
+        });
+
+        document.getElementById('google-sign-out-btn')?.addEventListener('click', async () => {
+            const confirmed = await Dialog.confirm(
+                'Sign out of this Google account on this device?',
+                'Sign Out'
+            );
+            if (!confirmed) return;
+
+            await storage.logoutRemote();
+            window.location.reload();
+        });
+    },
+
+    _accountStatusHtml(title, description, actions) {
+        return `
+            <div class="settings-item" style="align-items: flex-start; gap: var(--spacing-md);">
+                <div class="settings-item-info">
+                    <div class="settings-item-title">${title}</div>
+                    <div class="settings-item-desc">${description}</div>
+                </div>
+                ${actions ? `<div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap; justify-content: flex-end;">${actions}</div>` : ''}
+            </div>
+        `;
+    },
+
+    _updateSyncStatus() {
+        const syncStatus = document.getElementById('sync-status');
+        if (!syncStatus || typeof storage.getStorageMode !== 'function') return;
+
+        const mode = storage.getStorageMode();
+        if (mode === 'remote') {
+            syncStatus.textContent = 'Encrypted vault synced to the AgapeNotes server';
+        } else if (mode === 'authenticated-local') {
+            syncStatus.textContent = 'Signed in, but this device is using local data until the vault is unlocked';
+        } else {
+            syncStatus.textContent = 'Data stored locally on this device';
+        }
     },
 
     /**

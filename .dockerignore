@@ -1,0 +1,12 @@
+.git
+.codex
+.agents
+node_modules
+dist
+target
+server/target
+npm-debug.log*
+*.log
+.env
+.env.local
+.env.*.local

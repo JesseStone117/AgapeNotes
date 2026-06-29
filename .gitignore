@@ -16,6 +16,7 @@ public/build/   # if using certain setups
 # === Rust Backend ===
 # Main build directory - contains all compiled files, executables, etc.
 target/
+data/
 
 # Rustfmt backup files
 **/*.rs.bk
