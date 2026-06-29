@@ -691,6 +691,26 @@
     margin-bottom: var(--spacing-sm);
 }
 
+.settings-button {
+    width: 100%;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.settings-status-card {
+    align-items: flex-start;
+    gap: var(--spacing-md);
+}
+
+.settings-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
 .settings-item-info {
     flex: 1;
 }
@@ -720,6 +740,26 @@
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
     border-radius: var(--radius-sm);
+}
+
+.settings-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-sm);
+}
+
+.settings-stat-card {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.settings-empty-desc {
+    color: var(--color-text-tertiary);
+}
+
+.hidden-file-input {
+    display: none;
 }
 
 /* =====================================================
@@ -1627,6 +1667,67 @@
     margin-top: -2px;
 }
 
+.action-item-clickable {
+    cursor: pointer;
+}
+
+.me-task-input-row,
+.prayer-edit-item,
+.action-edit-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.me-task-input-row .form-input,
+.prayer-input,
+.action-input {
+    flex: 1;
+}
+
+.dynamic-status-select {
+    width: auto;
+    min-width: 100px;
+}
+
+.inline-add-btn,
+.view-add-note-btn,
+.resource-add-btn {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.inline-add-btn {
+    margin-top: var(--spacing-sm);
+}
+
+.view-add-note-btn {
+    margin-bottom: var(--spacing-sm);
+}
+
+.view-add-note-editor {
+    display: none;
+    margin-bottom: var(--spacing-md);
+}
+
+.note-inline-actions {
+    margin-top: var(--spacing-sm);
+}
+
+.transfer-description {
+    margin-bottom: var(--spacing-md);
+}
+
+.profile-pic-form-group {
+    text-align: center;
+}
+
+.collapsible-section-title {
+    cursor: pointer;
+    margin: 0;
+}
+
 
 /* =====================================================
    Quill WYSIWYG Editor Overrides
@@ -2051,6 +2152,33 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+}
+
+.resource-add-btn {
+    margin-bottom: var(--spacing-md);
+}
+
+.resource-delete-section {
+    margin-top: var(--spacing-xl);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--color-border-light);
+}
+
+.resource-empty-icon {
+    font-size: 3rem;
+}
+
+.resource-compact-empty {
+    padding: var(--spacing-xl);
+}
+
+.resource-spacious-empty {
+    padding-top: var(--spacing-2xl);
+}
+
+.resource-topic-chip {
+    font-size: 0.7rem;
+    padding: 2px 8px;
 }
 
 .resource-list-item {

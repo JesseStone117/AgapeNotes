@@ -23,7 +23,7 @@ const MeView = {
             <section class="detail-section tasks-section">
                 <div class="section-header"><h3 class="section-title">Tasks</h3></div>
                 <div class="form-group">
-                    <div class="action-edit-item" style="display:flex;gap:var(--spacing-sm);align-items:center;">
+                    <div class="me-task-input-row">
                         <input type="text" class="form-input" id="me-task-input" placeholder="New task">
                         <button class="btn btn-primary btn-sm" id="me-add-task">Add</button>
                     </div>

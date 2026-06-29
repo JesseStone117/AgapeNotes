@@ -351,7 +351,7 @@ const PersonDetail = {
                 <div class="section-header"><h3 class="section-title">Action Plan</h3></div>
                 <div class="action-list">
                     ${person.actionPlans.map((ap, i) => `
-                        <div class="action-item action-${ap.status}" data-action-index="${i}" style="cursor: pointer; transition: all 0.2s ease;" title="Tap to cycle status">
+                        <div class="action-item action-${ap.status} action-item-clickable" data-action-index="${i}" title="Tap to cycle status">
                             <span class="action-status-icon">${ap.status === 'done' ? '✓' : ap.status === 'in-progress' ? '◐' : '○'}</span>
                             <span class="action-content">${this._escapeHtml(ap.content)}</span>
                         </div>
@@ -402,10 +402,10 @@ const PersonDetail = {
             sec.innerHTML = `
                 <div class="section-header"><h3 class="section-title">Notes</h3></div>
                 
-                <button class="btn btn-ghost" id="view-add-note-btn" style="margin-bottom:var(--spacing-sm); width:100%; justify-content:flex-start;">+ Add Note</button>
-                <div id="view-add-note-editor" style="display:none; margin-bottom:var(--spacing-md);">
+                <button class="btn btn-ghost view-add-note-btn" id="view-add-note-btn">+ Add Note</button>
+                <div class="view-add-note-editor" id="view-add-note-editor">
                     <div id="view-add-note-quill"></div>
-                    <div class="note-inline-actions" style="margin-top:var(--spacing-sm);">
+                    <div class="note-inline-actions">
                         <button class="btn btn-primary btn-sm" id="view-add-note-save">Save</button>
                         <button class="btn btn-ghost btn-sm" id="view-add-note-cancel">Cancel</button>
                     </div>
@@ -878,7 +878,7 @@ const PersonDetail = {
         const body = document.createElement('div');
         body.className = 'transfer-person-form';
         body.innerHTML = `
-            <p class="settings-item-desc" style="margin-bottom:var(--spacing-md);">
+            <p class="settings-item-desc transfer-description">
                 Move ${this._escapeHtml(getFullName(person))} from ${CategoryLabels[currentCategory]} to another list.
             </p>
             <div class="transfer-options">
@@ -964,7 +964,7 @@ const PersonDetail = {
         container.innerHTML = `
             <form id="person-form">
                 <!-- Profile Picture -->
-                <div class="form-group" style="text-align:center;">
+                <div class="form-group profile-pic-form-group">
                     ${profilePicSection}
                     <label class="btn btn-secondary btn-sm profile-pic-upload" for="profile-pic-input">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -974,7 +974,7 @@ const PersonDetail = {
                         </svg>
                         ${person.profilePicture ? 'Change photo' : 'Add photo'}
                     </label>
-                    <input type="file" id="profile-pic-input" accept="image/*" style="display:none;">
+                    <input type="file" id="profile-pic-input" class="hidden-file-input" accept="image/*">
                 </div>
 
                 <div class="form-input-row">
@@ -1113,9 +1113,9 @@ const PersonDetail = {
                     <label class="form-label">Prayer Requests</label>
                     <div id="prayer-list">
                         ${(person.prayerRequests || []).map((pr, i) => `
-                            <div class="prayer-edit-item" style="margin-bottom:var(--spacing-sm);display:flex;gap:var(--spacing-sm);align-items:center;">
+                            <div class="prayer-edit-item">
                                 <input type="checkbox" class="prayer-answered" data-index="${i}" ${pr.isAnswered ? 'checked' : ''}>
-                                <input type="text" class="form-input prayer-input" data-index="${i}" value="${this._escapeHtml(pr.content)}" style="flex:1;">
+                                <input type="text" class="form-input prayer-input" data-index="${i}" value="${this._escapeHtml(pr.content)}">
                                 <button type="button" class="chip-remove prayer-remove" data-index="${i}" aria-label="Remove">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                                         <path d="M18 6L6 18M6 6l12 12"/>
@@ -1124,7 +1124,7 @@ const PersonDetail = {
                             </div>
                         `).join('')}
                     </div>
-                    <button type="button" class="btn btn-ghost" id="add-prayer" style="margin-top:var(--spacing-sm);">+ Add Prayer Request</button>
+                    <button type="button" class="btn btn-ghost inline-add-btn" id="add-prayer">+ Add Prayer Request</button>
                 </div>
 
                 <!-- Action Plans -->
@@ -1132,13 +1132,13 @@ const PersonDetail = {
                     <label class="form-label">Action Plan</label>
                     <div id="action-list">
                         ${(person.actionPlans || []).map((ap, i) => `
-                            <div class="action-edit-item" style="margin-bottom:var(--spacing-sm);display:flex;gap:var(--spacing-sm);align-items:center;">
-                                <select class="form-input action-status" data-index="${i}" style="width:auto;min-width:100px;">
+                            <div class="action-edit-item">
+                                <select class="form-input action-status dynamic-status-select" data-index="${i}">
                                     <option value="todo" ${ap.status === 'todo' ? 'selected' : ''}>To Do</option>
                                     <option value="in-progress" ${ap.status === 'in-progress' ? 'selected' : ''}>In Progress</option>
                                     <option value="done" ${ap.status === 'done' ? 'selected' : ''}>Done</option>
                                 </select>
-                                <input type="text" class="form-input action-input" data-index="${i}" value="${this._escapeHtml(ap.content)}" style="flex:1;">
+                                <input type="text" class="form-input action-input" data-index="${i}" value="${this._escapeHtml(ap.content)}">
                                 <button type="button" class="chip-remove action-remove" data-index="${i}" aria-label="Remove">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                                         <path d="M18 6L6 18M6 6l12 12"/>
@@ -1147,13 +1147,13 @@ const PersonDetail = {
                             </div>
                         `).join('')}
                     </div>
-                    <button type="button" class="btn btn-ghost" id="add-action" style="margin-top:var(--spacing-sm);">+ Add Action Item</button>
+                    <button type="button" class="btn btn-ghost inline-add-btn" id="add-action">+ Add Action Item</button>
                 </div>
 
                 <!-- Notes – Collapsible, collapsed by default -->
                 <div class="form-group collapsible-section" id="notes-collapsible-section">
                     <div class="collapsible-section-header" id="notes-section-toggle">
-                        <label class="form-label" style="cursor:pointer;margin:0;">Notes (${(person.notes || []).length})</label>
+                        <label class="form-label collapsible-section-title">Notes (${(person.notes || []).length})</label>
                         <svg class="collapsible-section-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M6 9l6 6 6-6"/>
                         </svg>
@@ -1171,7 +1171,7 @@ const PersonDetail = {
                                 </div>
                             `).join('')}
                         </div>
-                        <button type="button" class="btn btn-ghost" id="add-note" style="margin-top:var(--spacing-sm);">+ Add Note</button>
+                        <button type="button" class="btn btn-ghost inline-add-btn" id="add-note">+ Add Note</button>
                     </div>
                 </div>
                 </div>
@@ -1438,9 +1438,9 @@ const PersonDetail = {
         const list = document.getElementById('prayer-list');
         if (!list) return;
         list.innerHTML = (person.prayerRequests || []).map((pr, i) => `
-            <div class="prayer-edit-item" style="margin-bottom:var(--spacing-sm);display:flex;gap:var(--spacing-sm);align-items:center;">
+            <div class="prayer-edit-item">
                 <input type="checkbox" class="prayer-answered" data-index="${i}" ${pr.isAnswered ? 'checked' : ''}>
-                <input type="text" class="form-input prayer-input" data-index="${i}" value="${this._escapeHtml(pr.content)}" style="flex:1;">
+                <input type="text" class="form-input prayer-input" data-index="${i}" value="${this._escapeHtml(pr.content)}">
                 <button type="button" class="chip-remove prayer-remove" data-index="${i}" aria-label="Remove">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
                 </button>
@@ -1455,13 +1455,13 @@ const PersonDetail = {
         const list = document.getElementById('action-list');
         if (!list) return;
         list.innerHTML = (person.actionPlans || []).map((ap, i) => `
-            <div class="action-edit-item" style="margin-bottom:var(--spacing-sm);display:flex;gap:var(--spacing-sm);align-items:center;">
-                <select class="form-input action-status" data-index="${i}" style="width:auto;min-width:100px;">
+            <div class="action-edit-item">
+                <select class="form-input action-status dynamic-status-select" data-index="${i}">
                     <option value="todo" ${ap.status === 'todo' ? 'selected' : ''}>To Do</option>
                     <option value="in-progress" ${ap.status === 'in-progress' ? 'selected' : ''}>In Progress</option>
                     <option value="done" ${ap.status === 'done' ? 'selected' : ''}>Done</option>
                 </select>
-                <input type="text" class="form-input action-input" data-index="${i}" value="${this._escapeHtml(ap.content)}" style="flex:1;">
+                <input type="text" class="form-input action-input" data-index="${i}" value="${this._escapeHtml(ap.content)}">
                 <button type="button" class="chip-remove action-remove" data-index="${i}" aria-label="Remove">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
                 </button>

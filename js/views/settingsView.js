@@ -62,7 +62,7 @@ const SettingsView = {
                         </div>
                     </div>
                 </div>
-                <button class="settings-item" id="export-data-btn" style="width: 100%; text-align: left; cursor: pointer; border: none; background: var(--color-surface);">
+                <button class="settings-item settings-button" id="export-data-btn">
                     <div class="settings-item-info">
                         <div class="settings-item-title">Export Decrypted Backup</div>
                         <div class="settings-item-desc">Download a JSON copy from the unlocked vault</div>
@@ -71,7 +71,7 @@ const SettingsView = {
                         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                     </svg>
                 </button>
-                <button class="settings-item" id="import-data-btn" style="width: 100%; text-align: left; cursor: pointer; border: none; background: var(--color-surface);">
+                <button class="settings-item settings-button" id="import-data-btn">
                     <div class="settings-item-info">
                         <div class="settings-item-title">Import Legacy JSON</div>
                         <div class="settings-item-desc">Encrypt an old export and save it to the server vault</div>
@@ -92,7 +92,7 @@ const SettingsView = {
                             ${this._deviceUnlockStatusText()}
                         </div>
                     </div>
-                    <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap; justify-content: flex-end;">
+                    <div class="settings-actions">
                         <button class="btn btn-secondary" id="configure-device-unlock-btn">
                             ${storage.hasDeviceUnlock?.() ? 'Change Pattern' : 'Set Pattern'}
                         </button>
@@ -110,16 +110,16 @@ const SettingsView = {
                         <div class="settings-item-desc">Total people tracked</div>
                     </div>
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacing-sm);">
-                    <div class="settings-item" style="flex-direction: column; align-items: center; text-align: center;">
+                <div class="settings-stats-grid">
+                    <div class="settings-item settings-stat-card">
                         <div class="settings-item-title" id="staff-count">-</div>
                         <div class="settings-item-desc">Staff</div>
                     </div>
-                    <div class="settings-item" style="flex-direction: column; align-items: center; text-align: center;">
+                    <div class="settings-item settings-stat-card">
                         <div class="settings-item-title" id="students-count">-</div>
                         <div class="settings-item-desc">Students</div>
                     </div>
-                    <div class="settings-item" style="flex-direction: column; align-items: center; text-align: center;">
+                    <div class="settings-item settings-stat-card">
                         <div class="settings-item-title" id="supporters-count">-</div>
                         <div class="settings-item-desc">Supporters</div>
                     </div>
@@ -146,7 +146,7 @@ const SettingsView = {
             </div>
 
             <!-- Hidden file input for import -->
-            <input type="file" id="import-file-input" accept=".json" style="display: none;">
+            <input type="file" id="import-file-input" class="hidden-file-input" accept=".json">
         `;
 
         main.appendChild(container);
@@ -275,12 +275,12 @@ const SettingsView = {
 
     _accountStatusHtml(title, description, actions) {
         return `
-            <div class="settings-item" style="align-items: flex-start; gap: var(--spacing-md);">
+            <div class="settings-item settings-status-card">
                 <div class="settings-item-info">
                     <div class="settings-item-title">${title}</div>
                     <div class="settings-item-desc">${description}</div>
                 </div>
-                ${actions ? `<div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap; justify-content: flex-end;">${actions}</div>` : ''}
+                ${actions ? `<div class="settings-actions">${actions}</div>` : ''}
             </div>
         `;
     },
@@ -464,7 +464,7 @@ const SettingsView = {
             return `
                 <div class="settings-item">
                     <div class="settings-item-info">
-                        <div class="settings-item-desc" style="color: var(--color-text-tertiary);">No archived contacts</div>
+                        <div class="settings-item-desc settings-empty-desc">No archived contacts</div>
                     </div>
                 </div>
             `;

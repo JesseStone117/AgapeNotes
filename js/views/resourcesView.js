@@ -141,8 +141,7 @@ const ResourcesView = {
 
         // Add resource button
         const addBtn = document.createElement('button');
-        addBtn.className = 'btn btn-ghost';
-        addBtn.style.cssText = 'width:100%;justify-content:flex-start;margin-bottom:var(--spacing-md);';
+        addBtn.className = 'btn btn-ghost resource-add-btn';
         addBtn.textContent = '+ Add Resource';
         addBtn.addEventListener('click', () => this._addResource(topic, container));
         container.appendChild(addBtn);
@@ -152,7 +151,7 @@ const ResourcesView = {
             const empty = document.createElement('div');
             empty.className = 'empty-state';
             empty.innerHTML = `
-                <div class="empty-state-icon" style="font-size:3rem;">📝</div>
+                <div class="empty-state-icon resource-empty-icon">📝</div>
                 <div class="empty-state-title">No resources yet</div>
                 <div class="empty-state-text">Add discipleship quotes, tips, and action suggestions to this topic.</div>
             `;
@@ -204,7 +203,7 @@ const ResourcesView = {
 
         // Delete topic button at the bottom
         const deleteSection = document.createElement('div');
-        deleteSection.style.cssText = 'margin-top:var(--spacing-xl);padding-top:var(--spacing-lg);border-top:1px solid var(--color-border-light);';
+        deleteSection.className = 'resource-delete-section';
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn btn-danger btn-full';
         deleteBtn.textContent = 'Delete Topic';
@@ -285,7 +284,7 @@ const ResourcesView = {
                 <div class="form-group">
                     <label class="form-label">Suggested Action Plan Items</label>
                     <div id="res-actions-list" class="action-items-editor"></div>
-                    <button type="button" class="btn btn-ghost" id="res-add-action" style="width:100%;justify-content:flex-start;margin-top:var(--spacing-xs);">+ Add Action Item</button>
+                    <button type="button" class="btn btn-ghost inline-add-btn" id="res-add-action">+ Add Action Item</button>
                 </div>
                 <div class="edit-sticky-actions">
                     <button type="submit" class="btn btn-primary btn-full">${isEdit ? 'Save Changes' : 'Add Resource'}</button>
@@ -647,7 +646,7 @@ const ResourcesView = {
 
             if (!anyShown) {
                 listEl.innerHTML = `
-                    <div class="empty-state" style="padding:var(--spacing-xl);">
+                    <div class="empty-state resource-compact-empty">
                         <div class="empty-state-text">${filter ? 'No matching people found' : 'No people added yet'}</div>
                     </div>
                 `;
@@ -710,8 +709,8 @@ const ResourcesView = {
 
         if (bookMap.size === 0) {
             container.innerHTML = `
-                <div class="empty-state" style="padding-top:var(--spacing-2xl);">
-                    <div class="empty-state-icon" style="font-size:3rem;">📚</div>
+                <div class="empty-state resource-spacious-empty">
+                    <div class="empty-state-icon resource-empty-icon">📚</div>
                     <div class="empty-state-title">No sources yet</div>
                     <div class="empty-state-text">Sources appear here automatically when you add resources with a source citation in your topics.</div>
                 </div>
@@ -771,7 +770,7 @@ const ResourcesView = {
                 ${resource.title ? `<div class="resource-list-title">${this._escapeHtml(resource.title)}</div>` : ''}
                 <div class="resource-list-quote">${this._escapeHtml(preview)}</div>
                 <div class="resource-list-meta">
-                    <span class="chip" style="font-size:0.7rem;padding:2px 8px;">${this._escapeHtml(topicName)}</span>
+                    <span class="chip resource-topic-chip">${this._escapeHtml(topicName)}</span>
                     ${resource.citation ? `<span class="resource-list-citation">${this._escapeHtml(resource.citation)}</span>` : ''}
                 </div>
             `;

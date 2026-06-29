@@ -253,10 +253,9 @@ const ScheduleView = {
 
         if (dayMeetings.length === 0) {
             const empty = document.createElement('div');
-            empty.className = 'empty-state';
-            empty.style.paddingTop = 'var(--spacing-xl)';
+            empty.className = 'empty-state schedule-empty';
             empty.innerHTML = `
-                <div class="empty-state-icon" style="font-size:2.5rem;">📅</div>
+                <div class="empty-state-icon schedule-empty-icon">📅</div>
                 <div class="empty-state-title">No meetings</div>
                 <div class="empty-state-text">Tap "Add Meeting" to schedule one.</div>
             `;
@@ -265,8 +264,7 @@ const ScheduleView = {
         }
 
         const list = document.createElement('div');
-        list.className = 'day-meeting-list';
-        list.style.marginTop = 'var(--spacing-md)';
+        list.className = 'day-meeting-list day-meeting-list-spaced';
 
         dayMeetings.forEach(meeting => {
             const person = this._findPerson(meeting.personId);
@@ -339,7 +337,7 @@ const ScheduleView = {
                 </div>` : ''}
             </div>
 
-            <div class="meeting-actions" style="margin-top: var(--spacing-lg); display: flex; flex-direction: column; gap: var(--spacing-sm);">
+            <div class="meeting-actions">
                 <button class="btn btn-secondary btn-full" id="meeting-edit-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
@@ -406,10 +404,10 @@ const ScheduleView = {
         const body = document.createElement('div');
         body.className = 'repeat-delete-options';
         body.innerHTML = `
-            <p style="color: var(--color-text-secondary); margin-bottom: var(--spacing-lg); text-align: center;">
+            <p class="repeat-delete-description">
                 This is a repeating meeting. What would you like to delete?
             </p>
-            <div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
+            <div class="repeat-delete-actions">
                 <button class="btn btn-secondary btn-full" id="del-this-one">Delete This One Only</button>
                 <button class="btn btn-danger btn-full" id="del-all-future">Delete All Future Meetings</button>
                 <button class="btn btn-ghost btn-full" id="del-cancel">Cancel</button>
@@ -506,8 +504,8 @@ const ScheduleView = {
                     <div class="meeting-person-select">
                         <input type="hidden" id="mtg-person-id" value="${existingMeeting?.personId || ''}">
                         <input type="hidden" id="mtg-person-category" value="${existingMeeting?.personCategory || ''}">
-                        <button type="button" class="form-input meeting-person-btn" id="mtg-select-person" style="text-align: left; cursor: pointer;">
-                            ${personName ? this._escapeHtml(personName) : '<span style="color: var(--color-text-tertiary);">Select a person…</span>'}
+                        <button type="button" class="form-input meeting-person-btn" id="mtg-select-person">
+                            ${personName ? this._escapeHtml(personName) : '<span class="meeting-person-placeholder">Select a person…</span>'}
                         </button>
                     </div>
                 </div>
@@ -534,7 +532,7 @@ const ScheduleView = {
 
                 ${!isEdit ? `
                 <div class="form-group">
-                    <div class="settings-item" style="background: var(--color-surface); cursor: pointer;">
+                    <div class="settings-item meeting-repeat-toggle">
                         <div class="settings-item-info">
                             <div class="settings-item-title">Repeat Weekly</div>
                             <div class="settings-item-desc">Meeting will repeat every week</div>
@@ -544,7 +542,7 @@ const ScheduleView = {
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div id="mtg-repeat-end-wrap" style="display: none; margin-top: var(--spacing-sm);">
+                    <div class="repeat-end-wrap" id="mtg-repeat-end-wrap">
                         <label class="form-label" for="mtg-repeat-end">End Date (optional)</label>
                         <input type="date" class="form-input" id="mtg-repeat-end" value="">
                     </div>
@@ -759,7 +757,7 @@ const ScheduleView = {
 
             if (!anyShown) {
                 listEl.innerHTML = `
-                    <div class="empty-state" style="padding:var(--spacing-xl);">
+                    <div class="empty-state schedule-picker-empty">
                         <div class="empty-state-text">${filter ? 'No matching people found' : 'No people added yet'}</div>
                     </div>
                 `;
