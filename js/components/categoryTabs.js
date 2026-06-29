@@ -60,7 +60,6 @@ const CategoryTabs = {
         if (category === appState.get('currentCategory')) return;
 
         appState.set('currentCategory', category);
-        localStorage.setItem('agapenotes_last_tab', category);
         this.updateActiveState(category);
 
         // Animate the list container

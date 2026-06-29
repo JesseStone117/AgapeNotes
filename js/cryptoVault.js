@@ -91,6 +91,27 @@ const CryptoVault = {
         };
     },
 
+    async decryptWithDek(vault, vaultState) {
+        if (!vaultState?.dekKey) {
+            throw new Error('Vault is not unlocked');
+        }
+
+        const metadata = vault.crypto;
+        this._validateMetadata(metadata);
+
+        const plaintext = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: this._base64ToBytes(metadata.data.nonce) },
+            vaultState.dekKey,
+            this._base64ToBytes(vault.ciphertext)
+        );
+
+        return {
+            data: JSON.parse(new TextDecoder().decode(plaintext)),
+            dekKey: vaultState.dekKey,
+            crypto: metadata
+        };
+    },
+
     async encryptWithDek(data, vaultState) {
         if (!vaultState?.dekKey || !vaultState?.crypto) {
             throw new Error('Vault is not unlocked');

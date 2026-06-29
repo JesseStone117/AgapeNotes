@@ -9,6 +9,7 @@ const { loadScript } = require('./helpers/loadScript');
 
 // Load the storage module into the global scope
 loadScript('js/storage.js');
+loadScript('tests/helpers/localStorageAdapter.js');
 
 // ---------------------------------------------------------------------------
 //  Helpers

@@ -135,7 +135,7 @@ const appState = new StateManager({
     currentView: 'notes', // 'notes' | 'resources' | 'schedule' | 'settings'
 
     // Current category in notes view
-    currentCategory: localStorage.getItem('agapenotes_last_tab') || Categories.STAFF,
+    currentCategory: Categories.STAFF,
 
     // People data (cached from storage)
     staff: [],

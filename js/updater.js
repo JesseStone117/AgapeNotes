@@ -15,14 +15,12 @@ const AppUpdater = {
     _checkingStarted: false,
     _bannerVisible: false,
     _bannerTimer: null,
-    _noticeKey: 'agapenotes-update-received',
 
     init() {
         if (!('serviceWorker' in navigator)) return;
 
         this._hasController = Boolean(navigator.serviceWorker.controller);
         this._initialized = true;
-        this._showQueuedUpdateNotice();
 
         navigator.serviceWorker.addEventListener('controllerchange', () => {
             if (!this._hasController) {
@@ -32,12 +30,6 @@ const AppUpdater = {
 
             if (this._refreshing) return;
             this._refreshing = true;
-
-            try {
-                sessionStorage.setItem(this._noticeKey, '1');
-            } catch {
-                // A reload is still enough to move onto the new build.
-            }
 
             window.location.reload();
         });
@@ -127,21 +119,6 @@ const AppUpdater = {
         if (!worker) return;
 
         worker.postMessage({ type: 'SKIP_WAITING' });
-    },
-
-    _showQueuedUpdateNotice() {
-        let shouldShow = false;
-
-        try {
-            shouldShow = sessionStorage.getItem(this._noticeKey) === '1';
-            sessionStorage.removeItem(this._noticeKey);
-        } catch {
-            shouldShow = false;
-        }
-
-        if (shouldShow) {
-            setTimeout(() => this._showUpdateNotice(), 500);
-        }
     },
 
     _showUpdateNotice() {

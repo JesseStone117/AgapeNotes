@@ -20,6 +20,7 @@ const { loadScript } = require('./helpers/loadScript');
 // Load production modules into global scope
 loadScript('js/models.js');
 loadScript('js/storage.js');
+loadScript('tests/helpers/localStorageAdapter.js');
 
 // ---------------------------------------------------------------------------
 //  Helpers — replicate the relevant bits of PersonDetail

@@ -913,7 +913,6 @@ const PersonDetail = {
 
         await refreshPeopleData();
         appState.set('currentCategory', toCategory);
-        localStorage.setItem('agapenotes_last_tab', toCategory);
 
         while (Modal.isOpen()) {
             Modal.close();

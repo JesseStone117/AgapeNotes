@@ -15,6 +15,7 @@ const { loadScript } = require('./helpers/loadScript');
 // Load models and storage into global scope
 loadScript('js/models.js');
 loadScript('js/storage.js');
+loadScript('tests/helpers/localStorageAdapter.js');
 
 // ---------------------------------------------------------------------------
 //  Helpers — simulate the data-extraction logic from _savePerson

@@ -15,18 +15,7 @@
             const isAuthenticated = await requireGoogleAuthentication();
             if (!isAuthenticated) return;
 
-            // Check if PIN is set and show PIN screen first
-            if (PinAuth.hasPin()) {
-                // Hide app content until PIN is entered
-                document.getElementById('app').style.display = 'none';
-
-                PinScreen.show(async () => {
-                    document.getElementById('app').style.display = '';
-                    await initializeApp();
-                });
-            } else {
-                await initializeApp();
-            }
+            await initializeApp();
         } catch (error) {
             console.error('Failed to initialize app:', error);
         }
@@ -70,21 +59,16 @@
         // Render initial view
         NotesView.render();
 
-        // Re-lock app when returning from background
-        let pinAuthenticated = true; // just authenticated on load
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') {
-                pinAuthenticated = false;
+        setInterval(async () => {
+            try {
+                const result = await storage.sync();
+                if (result.updated) {
+                    await refreshPeopleData();
+                }
+            } catch (error) {
+                console.warn('Background vault sync skipped:', error);
             }
-            if (document.visibilityState === 'visible' && PinAuth.hasPin() && !pinAuthenticated) {
-                document.getElementById('app').style.display = 'none';
-                PinScreen.show(() => {
-                    document.getElementById('app').style.display = '';
-                    pinAuthenticated = true;
-                });
-            }
-        });
+        }, 30000);
 
         console.log('AgapeNotes initialized successfully');
 

@@ -1,11 +1,9 @@
 /**
  * AgapeNotes Storage Layer
  * 
- * Abstract storage interface with localStorage implementation.
- * Designed to be easily swapped with Google Drive adapter in the future.
+ * Abstract storage interface plus the remote encrypted vault adapter.
  */
 
-const STORAGE_KEY = 'agape-notes-data';
 const STORAGE_VERSION = 8;
 
 /**
@@ -67,34 +65,17 @@ class StorageService {
 }
 
 /**
- * LocalStorage Adapter - Implements StorageService using browser localStorage
+ * Shared data adapter with CRUD and migration logic.
  */
-class LocalStorageAdapter extends StorageService {
+class DataAdapter extends StorageService {
     constructor() {
         super();
         this.data = null;
     }
 
     async initialize() {
-        try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                this.data = JSON.parse(stored);
-                // Migration check
-                if (this.data.version !== STORAGE_VERSION) {
-                    this.data = this._migrate(this.data);
-                    await this._persist();
-                }
-            } else {
-                this.data = getDefaultData();
-                await this._persist();
-            }
-            return true;
-        } catch (error) {
-            console.error('Failed to initialize storage:', error);
-            this.data = getDefaultData();
-            return false;
-        }
+        this.data = getDefaultData();
+        return true;
     }
 
     async getAllData() {
@@ -290,10 +271,7 @@ class LocalStorageAdapter extends StorageService {
     }
 
     async sync() {
-        // LocalStorage is synchronous, so this is a no-op
-        // Future Google Drive adapter will implement actual sync
         this.data.lastSync = new Date().toISOString();
-        await this._persist();
         return { success: true, lastSync: this.data.lastSync };
     }
 
@@ -320,13 +298,7 @@ class LocalStorageAdapter extends StorageService {
     }
 
     async _persist() {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
-            return true;
-        } catch (error) {
-            console.error('Failed to persist data:', error);
-            return false;
-        }
+        throw new Error('Persistent storage adapter must implement _persist');
     }
 
     _migrate(oldData) {
@@ -386,13 +358,16 @@ class LocalStorageAdapter extends StorageService {
 }
 
 /**
- * Hybrid Adapter - keeps local mode available and upgrades to an encrypted API
- * vault after Google sign-in + passphrase unlock.
+ * Remote vault adapter - the live app path.
+ *
+ * The browser may hold decrypted data in memory after unlock, but all durable
+ * user data is encrypted and written only through the Rust API.
  */
-class HybridStorageAdapter extends LocalStorageAdapter {
+class RemoteVaultStorageAdapter extends DataAdapter {
     constructor() {
         super();
-        this.mode = 'local';
+        this.data = getDefaultData();
+        this.mode = 'locked';
         this.remoteSession = null;
         this.remoteRevision = null;
         this.vaultState = null;
@@ -400,7 +375,7 @@ class HybridStorageAdapter extends LocalStorageAdapter {
     }
 
     async initialize() {
-        const initialized = await super.initialize();
+        this.data = getDefaultData();
         const shouldPromptForVault = this._consumeAuthSuccessFlag();
         await this.refreshRemoteSession();
 
@@ -413,7 +388,7 @@ class HybridStorageAdapter extends LocalStorageAdapter {
             }
         }
 
-        return initialized;
+        return this.remoteAvailable;
     }
 
     async refreshRemoteSession() {
@@ -428,7 +403,7 @@ class HybridStorageAdapter extends LocalStorageAdapter {
             this.remoteAvailable = true;
             return this.remoteSession;
         } catch (error) {
-            console.warn('AgapeNotes API is unavailable; staying in local mode.', error);
+            console.warn('AgapeNotes API is unavailable.', error);
             this.remoteAvailable = false;
             this.remoteSession = null;
             return null;
@@ -453,8 +428,9 @@ class HybridStorageAdapter extends LocalStorageAdapter {
 
     getStorageMode() {
         if (this.isRemoteUnlocked()) return 'remote';
-        if (this.isRemoteAuthenticated()) return 'authenticated-local';
-        return 'local';
+        if (this.isRemoteAuthenticated()) return 'locked';
+        if (this.remoteAvailable) return 'signed-out';
+        return 'unavailable';
     }
 
     async unlockRemoteVault() {
@@ -474,12 +450,8 @@ class HybridStorageAdapter extends LocalStorageAdapter {
             if (!passphrase) return false;
 
             const decrypted = await CryptoVault.decryptVault(vault, passphrase);
-            this.data = decrypted.data;
-            const needsMigration = this.data.version !== STORAGE_VERSION;
-            if (this.data.version !== STORAGE_VERSION) {
-                this.data = this._migrate(this.data);
-            }
-
+            const needsMigration = decrypted.data?.version !== STORAGE_VERSION;
+            this.data = this._normalizeVaultData(decrypted.data);
             this.vaultState = {
                 dekKey: decrypted.dekKey,
                 crypto: decrypted.crypto
@@ -497,6 +469,7 @@ class HybridStorageAdapter extends LocalStorageAdapter {
         const passphrase = CryptoVault.promptNewPassphrase();
         if (!passphrase) return false;
 
+        this.data = getDefaultData();
         const encrypted = await CryptoVault.createEncryptedVault(this.data, passphrase);
         const saved = await ApiClient.putVault({
             expectedRevision: null,
@@ -510,19 +483,16 @@ class HybridStorageAdapter extends LocalStorageAdapter {
         };
         this.remoteRevision = saved.revision;
         this.mode = 'remote';
-        this.remoteSession.vault = {
-            exists: true,
-            revision: saved.revision,
-            updatedAt: saved.updatedAt
-        };
+        this._updateRemoteVaultSummary(saved);
 
         return true;
     }
 
     lockRemoteVault() {
-        this.mode = 'local';
+        this.mode = 'locked';
         this.remoteRevision = null;
         this.vaultState = null;
+        this.data = getDefaultData();
     }
 
     async logoutRemote() {
@@ -534,54 +504,204 @@ class HybridStorageAdapter extends LocalStorageAdapter {
         this.remoteSession = { authenticated: false, user: null, vault: null };
     }
 
-    async _persist() {
-        if (this.isRemoteUnlocked()) {
-            return this._persistRemote();
-        }
-
-        return super._persist();
+    async savePerson(category, person) {
+        await this._ensureFreshBeforeWrite();
+        return super.savePerson(category, person);
     }
 
-    async _persistRemote() {
-        const encrypted = await CryptoVault.encryptWithDek(this.data, this.vaultState);
-        const saved = await ApiClient.putVault({
-            expectedRevision: this.remoteRevision,
-            crypto: encrypted.crypto,
-            ciphertext: encrypted.ciphertext
-        });
+    async deletePerson(category, id) {
+        await this._ensureFreshBeforeWrite();
+        return super.deletePerson(category, id);
+    }
 
-        this.remoteRevision = saved.revision;
-        this.vaultState.crypto = saved.crypto || encrypted.crypto;
-        if (this.remoteSession) {
-            this.remoteSession.vault = {
-                exists: true,
-                revision: saved.revision,
-                updatedAt: saved.updatedAt
-            };
+    async transferPerson(fromCategory, toCategory, personId) {
+        await this._ensureFreshBeforeWrite();
+        return super.transferPerson(fromCategory, toCategory, personId);
+    }
+
+    async saveTopic(topic) {
+        await this._ensureFreshBeforeWrite();
+        return super.saveTopic(topic);
+    }
+
+    async deleteTopic(topicId) {
+        await this._ensureFreshBeforeWrite();
+        return super.deleteTopic(topicId);
+    }
+
+    async saveMeeting(meeting) {
+        await this._ensureFreshBeforeWrite();
+        return super.saveMeeting(meeting);
+    }
+
+    async saveMeetings(meetings) {
+        await this._ensureFreshBeforeWrite();
+        return super.saveMeetings(meetings);
+    }
+
+    async deleteMeeting(meetingId) {
+        await this._ensureFreshBeforeWrite();
+        return super.deleteMeeting(meetingId);
+    }
+
+    async savePersonalData(personal) {
+        await this._ensureFreshBeforeWrite();
+        return super.savePersonalData(personal);
+    }
+
+    async deleteMeetings(meetingIds) {
+        await this._ensureFreshBeforeWrite();
+        return super.deleteMeetings(meetingIds);
+    }
+
+    async sync() {
+        if (!this.isRemoteUnlocked()) {
+            return { success: false, skipped: true, reason: 'vault-locked' };
         }
 
-        return true;
+        const updated = await this._loadRemoteIfNewer();
+        return {
+            success: true,
+            updated,
+            revision: this.remoteRevision,
+            lastSync: this.data?.lastSync || null
+        };
     }
 
     async exportData() {
+        this._assertUnlocked();
+        await this.sync();
         return JSON.stringify(this.data, null, 2);
     }
 
     async importData(jsonString) {
+        this._assertUnlocked();
+
         try {
-            const imported = JSON.parse(jsonString);
-            if (imported.version && imported.staff && imported.students && imported.supporters) {
-                if (!imported.discipleshipTopics) imported.discipleshipTopics = [];
-                if (!imported.meetings) imported.meetings = [];
-                if (!imported.personal) imported.personal = { growthPlans: [], tasks: [] };
-                this.data = imported;
-                await this._persist();
-                return true;
-            }
-            throw new Error('Invalid data format');
+            await this._loadRemoteIfNewer();
+            this.data = this._normalizeImportedData(jsonString);
+            await this._persist();
+            return true;
         } catch (error) {
             console.error('Import failed:', error);
+            if (error instanceof SyntaxError || error.message === 'Invalid data format') {
+                return false;
+            }
+            throw error;
+        }
+    }
+
+    async _persist() {
+        this._assertUnlocked();
+        return this._persistRemote();
+    }
+
+    async _persistRemote() {
+        this._assertUnlocked();
+        this.data.lastSync = new Date().toISOString();
+
+        const encrypted = await CryptoVault.encryptWithDek(this.data, this.vaultState);
+
+        try {
+            const saved = await ApiClient.putVault({
+                expectedRevision: this.remoteRevision,
+                crypto: encrypted.crypto,
+                ciphertext: encrypted.ciphertext
+            });
+
+            this.remoteRevision = saved.revision;
+            this.vaultState.crypto = saved.crypto || encrypted.crypto;
+            this._updateRemoteVaultSummary(saved);
+            return true;
+        } catch (error) {
+            if (error?.status === 409) {
+                throw new Error('Your vault changed on another device. Sync finished data first, then try the change again.');
+            }
+            throw error;
+        }
+    }
+
+    async _ensureFreshBeforeWrite() {
+        this._assertUnlocked();
+        await this._loadRemoteIfNewer();
+    }
+
+    async _loadRemoteIfNewer() {
+        const vault = await ApiClient.getVault();
+        if (!vault.exists) {
+            throw new Error('Encrypted vault was not found for this account.');
+        }
+
+        const revision = vault.revision || 0;
+        if (this.remoteRevision !== null && revision <= this.remoteRevision) {
             return false;
+        }
+
+        const decrypted = await CryptoVault.decryptWithDek(vault, this.vaultState);
+        this.data = this._normalizeVaultData(decrypted.data);
+        this.remoteRevision = revision;
+        this.vaultState.crypto = decrypted.crypto;
+        this._updateRemoteVaultSummary(vault);
+        return true;
+    }
+
+    _normalizeImportedData(jsonString) {
+        const imported = JSON.parse(jsonString);
+        return this._normalizeVaultData(imported, true);
+    }
+
+    _normalizeVaultData(data, requireLegacyShape = false) {
+        if (!data || typeof data !== 'object') {
+            throw new Error('Invalid data format');
+        }
+
+        if (
+            requireLegacyShape &&
+            (!Array.isArray(data.staff) || !Array.isArray(data.students) || !Array.isArray(data.supporters))
+        ) {
+            throw new Error('Invalid data format');
+        }
+
+        const normalized = {
+            ...getDefaultData(),
+            ...data,
+            staff: Array.isArray(data.staff) ? data.staff : [],
+            students: Array.isArray(data.students) ? data.students : [],
+            supporters: Array.isArray(data.supporters) ? data.supporters : [],
+            discipleshipTopics: Array.isArray(data.discipleshipTopics) ? data.discipleshipTopics : [],
+            meetings: Array.isArray(data.meetings) ? data.meetings : [],
+            personal: {
+                growthPlans: Array.isArray(data.personal?.growthPlans) ? data.personal.growthPlans : [],
+                tasks: Array.isArray(data.personal?.tasks) ? data.personal.tasks : []
+            }
+        };
+
+        if (!Object.prototype.hasOwnProperty.call(data, 'version')) {
+            normalized.version = requireLegacyShape ? 0 : STORAGE_VERSION;
+        }
+
+        if (normalized.version !== STORAGE_VERSION) {
+            return this._migrate(normalized);
+        }
+
+        return {
+            ...normalized,
+            version: STORAGE_VERSION
+        };
+    }
+
+    _updateRemoteVaultSummary(saved) {
+        if (!this.remoteSession) return;
+        this.remoteSession.vault = {
+            exists: true,
+            revision: saved.revision,
+            updatedAt: saved.updatedAt
+        };
+    }
+
+    _assertUnlocked() {
+        if (!this.isRemoteUnlocked() || !this.vaultState) {
+            throw new Error('Unlock the encrypted vault before using AgapeNotes data.');
         }
     }
 
@@ -600,5 +720,5 @@ class HybridStorageAdapter extends LocalStorageAdapter {
     }
 }
 
-// Export singleton instance
-const storage = new HybridStorageAdapter();
+// Export singleton instance used by the app.
+const storage = new RemoteVaultStorageAdapter();

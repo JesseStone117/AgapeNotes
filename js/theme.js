@@ -1,24 +1,15 @@
 /**
  * AgapeNotes Theme Manager
  * 
- * Handles dark mode toggle and theme persistence
+ * Handles dark mode toggle without browser storage persistence.
  */
-
-const THEME_KEY = 'agapenotes-theme';
 
 const ThemeManager = {
     /**
-     * Initialize theme from saved preference or system preference
+     * Initialize the non-persistent session theme.
      */
     init() {
-        const saved = localStorage.getItem(THEME_KEY);
-
-        if (saved) {
-            this.setTheme(saved, false);
-        } else {
-            // Default to light mode as per requirements
-            this.setTheme('light', false);
-        }
+        this.setTheme('light');
     },
 
     /**
@@ -40,9 +31,8 @@ const ThemeManager = {
     /**
      * Set theme
      * @param {string} theme - 'light' or 'dark'
-     * @param {boolean} save - Whether to save to localStorage
      */
-    setTheme(theme, save = true) {
+    setTheme(theme) {
         if (theme === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
             this._updateMetaThemeColor('#0F0F0F');
@@ -53,10 +43,6 @@ const ThemeManager = {
 
         // Toggle settings icon between gear and moon
         this._updateSettingsIcon(theme === 'dark');
-
-        if (save) {
-            localStorage.setItem(THEME_KEY, theme);
-        }
     },
 
     /**

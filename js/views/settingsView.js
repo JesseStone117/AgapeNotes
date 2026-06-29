@@ -1,7 +1,7 @@
 /**
  * AgapeNotes Settings View
  * 
- * Settings and account management (placeholder for Google integration)
+ * Settings and account management for the encrypted server vault.
  */
 
 const SettingsView = {
@@ -42,7 +42,7 @@ const SettingsView = {
                 <div class="settings-item">
                     <div class="settings-item-info">
                         <div class="settings-item-title">Dark Mode</div>
-                        <div class="settings-item-desc">Switch to dark theme</div>
+                        <div class="settings-item-desc">Switch to dark theme for this session</div>
                     </div>
                     <label class="toggle-switch">
                         <input type="checkbox" id="dark-mode-toggle" ${ThemeManager.isDark() ? 'checked' : ''}>
@@ -58,14 +58,14 @@ const SettingsView = {
                     <div class="settings-item-info">
                         <div class="settings-item-title">Sync Status</div>
                         <div class="settings-item-desc" id="sync-status">
-                            Data stored locally on this device
+                            Checking encrypted vault status...
                         </div>
                     </div>
                 </div>
                 <button class="settings-item" id="export-data-btn" style="width: 100%; text-align: left; cursor: pointer; border: none; background: var(--color-surface);">
                     <div class="settings-item-info">
-                        <div class="settings-item-title">Export Data</div>
-                        <div class="settings-item-desc">Download a backup of your data</div>
+                        <div class="settings-item-title">Export Decrypted Backup</div>
+                        <div class="settings-item-desc">Download a JSON copy from the unlocked vault</div>
                     </div>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" stroke-width="2">
                         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
@@ -73,8 +73,8 @@ const SettingsView = {
                 </button>
                 <button class="settings-item" id="import-data-btn" style="width: 100%; text-align: left; cursor: pointer; border: none; background: var(--color-surface);">
                     <div class="settings-item-info">
-                        <div class="settings-item-title">Import Data</div>
-                        <div class="settings-item-desc">Restore from a backup file</div>
+                        <div class="settings-item-title">Import Legacy JSON</div>
+                        <div class="settings-item-desc">Encrypt an old export and save it to the server vault</div>
                     </div>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" stroke-width="2">
                         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
@@ -104,51 +104,6 @@ const SettingsView = {
                         <div class="settings-item-title" id="supporters-count">-</div>
                         <div class="settings-item-desc">Supporters</div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Security Section -->
-            <div class="settings-section">
-                <h3 class="settings-section-title">Security</h3>
-                <button class="settings-item" id="set-pin-btn" style="width: 100%; text-align: left; cursor: pointer; border: none; background: var(--color-surface);">
-                    <div class="settings-item-info">
-                        <div class="settings-item-title" id="pin-status-title">${PinAuth.hasPin() ? 'Change Pattern' : 'Set Pattern'}</div>
-                        <div class="settings-item-desc">${PinAuth.hasPin() ? 'Update your swipe pattern' : 'Protect your notes with a pattern'}</div>
-                    </div>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" stroke-width="2">
-                        <rect x="3" y="3" width="7" height="7" rx="1"/>
-                        <rect x="14" y="3" width="7" height="7" rx="1"/>
-                        <rect x="3" y="14" width="7" height="7" rx="1"/>
-                        <rect x="14" y="14" width="7" height="7" rx="1"/>
-                    </svg>
-                </button>
-                ${PinAuth.hasPin() ? `
-                <button class="settings-item" id="clear-pin-btn" style="width: 100%; text-align: left; cursor: pointer; border: none; background: var(--color-surface);">
-                    <div class="settings-item-info">
-                        <div class="settings-item-title" style="color: #EF4444;">Remove Pattern</div>
-                        <div class="settings-item-desc">Disable pattern protection</div>
-                    </div>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2">
-                        <rect x="3" y="3" width="7" height="7" rx="1"/>
-                        <rect x="14" y="3" width="7" height="7" rx="1"/>
-                        <rect x="3" y="14" width="7" height="7" rx="1"/>
-                        <rect x="14" y="14" width="7" height="7" rx="1"/>
-                        <line x1="4" y1="4" x2="20" y2="20"/>
-                    </svg>
-                </button>
-                ` : ''}
-            </div>
-
-            <!-- Personalization Section -->
-            <div class="settings-section">
-                <h3 class="settings-section-title">Personalization</h3>
-                <div class="settings-item" style="flex-direction: column; align-items: stretch;">
-                    <div class="settings-item-info" style="margin-bottom: var(--spacing-sm);">
-                        <div class="settings-item-title">Lock Screen Quote</div>
-                        <div class="settings-item-desc">Display a custom quote on the PIN screen</div>
-                    </div>
-                    <textarea class="form-input" id="quote-input" rows="2" placeholder="Enter your favorite quote...">${this._escapeHtml(PinAuth.getQuote())}</textarea>
-                    <button class="btn btn-secondary" id="save-quote-btn" style="margin-top: var(--spacing-sm); align-self: flex-end;">Save Quote</button>
                 </div>
             </div>
 
@@ -221,8 +176,8 @@ const SettingsView = {
 
         if (typeof ApiClient === 'undefined' || typeof storage.refreshRemoteSession !== 'function') {
             panel.innerHTML = this._accountStatusHtml(
-                'Local Account',
-                'This build is running without the AgapeNotes server.',
+                'Server Required',
+                'AgapeNotes data requires the encrypted server vault.',
                 ''
             );
             return;
@@ -234,7 +189,7 @@ const SettingsView = {
         if (!storage.remoteAvailable) {
             panel.innerHTML = this._accountStatusHtml(
                 'Server Unavailable',
-                'Local data is still available on this device.',
+                'Data cannot be loaded until the AgapeNotes server is reachable.',
                 ''
             );
             return;
@@ -256,8 +211,8 @@ const SettingsView = {
         const email = this._escapeHtml(user?.email || 'Signed in');
         const isUnlocked = storage.isRemoteUnlocked();
         const status = isUnlocked
-            ? 'Encrypted vault unlocked. Changes sync to the server.'
-            : 'Signed in. Unlock the encrypted vault to sync this device.';
+            ? 'Encrypted vault unlocked. Changes are saved to the server.'
+            : 'Signed in. Unlock the encrypted vault before using app data.';
         const actions = isUnlocked
             ? `
                 <button class="btn btn-secondary" id="lock-vault-btn">Lock Vault</button>
@@ -284,7 +239,7 @@ const SettingsView = {
 
         document.getElementById('lock-vault-btn')?.addEventListener('click', () => {
             storage.lockRemoteVault();
-            this.render();
+            window.location.reload();
         });
 
         document.getElementById('google-sign-out-btn')?.addEventListener('click', async () => {
@@ -317,11 +272,16 @@ const SettingsView = {
 
         const mode = storage.getStorageMode();
         if (mode === 'remote') {
-            syncStatus.textContent = 'Encrypted vault synced to the AgapeNotes server';
-        } else if (mode === 'authenticated-local') {
-            syncStatus.textContent = 'Signed in, but this device is using local data until the vault is unlocked';
+            const revision = storage.getRemoteVaultSummary()?.revision;
+            syncStatus.textContent = revision
+                ? `Encrypted vault synced to the AgapeNotes server at revision ${revision}`
+                : 'Encrypted vault synced to the AgapeNotes server';
+        } else if (mode === 'locked') {
+            syncStatus.textContent = 'Signed in, but the encrypted vault is locked';
+        } else if (mode === 'signed-out') {
+            syncStatus.textContent = 'Sign in with Google to load your encrypted vault';
         } else {
-            syncStatus.textContent = 'Data stored locally on this device';
+            syncStatus.textContent = 'Server unavailable; app data is not loaded locally';
         }
     },
 
@@ -348,7 +308,7 @@ const SettingsView = {
                     URL.revokeObjectURL(url);
                 } catch (error) {
                     console.error('Export failed:', error);
-                    await Dialog.alert('Failed to export data. Please try again.', 'Export Error');
+                    await Dialog.alert('Unlock the encrypted vault before exporting data.', 'Export Error');
                 }
             });
         }
@@ -367,8 +327,8 @@ const SettingsView = {
                 if (!file) return;
 
                 const confirmed = await Dialog.confirm(
-                    'This will replace all current data. Are you sure?',
-                    'Import Data'
+                    'This will replace the encrypted vault data stored on the server with the contents of this legacy JSON export. Continue?',
+                    'Import Legacy JSON'
                 );
 
                 if (!confirmed) {
@@ -383,13 +343,14 @@ const SettingsView = {
                     if (success) {
                         await refreshPeopleData();
                         this._updateStats();
-                        await Dialog.alert('Data imported successfully!', 'Success');
+                        this._updateSyncStatus();
+                        await Dialog.alert('Legacy data was encrypted and saved to the server vault.', 'Success');
                     } else {
-                        await Dialog.alert('Invalid backup file format.', 'Import Error');
+                        await Dialog.alert('Invalid legacy export format.', 'Import Error');
                     }
                 } catch (error) {
                     console.error('Import failed:', error);
-                    await Dialog.alert('Failed to import data. Please check the file format.', 'Import Error');
+                    await Dialog.alert('Import failed before the server vault could be updated.', 'Import Error');
                 }
 
                 importInput.value = '';
@@ -401,63 +362,6 @@ const SettingsView = {
         if (darkModeToggle) {
             darkModeToggle.addEventListener('change', (e) => {
                 ThemeManager.setTheme(e.target.checked ? 'dark' : 'light');
-            });
-        }
-
-        // Set/Change Pattern PIN
-        const setPinBtn = document.getElementById('set-pin-btn');
-        if (setPinBtn) {
-            setPinBtn.addEventListener('click', async () => {
-                const currentHasPin = PinAuth.hasPin();
-
-                if (currentHasPin) {
-                    // Verify current pattern first
-                    PinScreen.show(async () => {
-                        // After successful verification, show setup for new pattern
-                        setTimeout(() => {
-                            PinScreen.showSetup(async () => {
-                                await Dialog.alert('Pattern set successfully!', 'Success');
-                                this.render();
-                            });
-                        }, 400);
-                    });
-                } else {
-                    // No existing pattern, go straight to setup
-                    PinScreen.showSetup(async () => {
-                        await Dialog.alert('Pattern set successfully!', 'Success');
-                        this.render();
-                    });
-                }
-            });
-        }
-
-        // Clear Pattern PIN
-        const clearPinBtn = document.getElementById('clear-pin-btn');
-        if (clearPinBtn) {
-            clearPinBtn.addEventListener('click', async () => {
-                // Verify current pattern first
-                PinScreen.show(async () => {
-                    const confirmed = await Dialog.confirm(
-                        'Are you sure you want to remove pattern protection?',
-                        'Remove Pattern'
-                    );
-
-                    if (confirmed) {
-                        PinAuth.clearPin();
-                        await Dialog.alert('Pattern removed', 'Success');
-                        this.render();
-                    }
-                });
-            });
-        }
-
-        // Save Quote
-        const saveQuoteBtn = document.getElementById('save-quote-btn');
-        const quoteInput = document.getElementById('quote-input');
-        if (saveQuoteBtn && quoteInput) {
-            saveQuoteBtn.addEventListener('click', async () => {
-                PinAuth.setQuote(quoteInput.value.trim());
-                await Dialog.alert('Quote saved!', 'Success');
             });
         }
 
