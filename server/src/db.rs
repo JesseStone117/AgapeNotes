@@ -1,6 +1,9 @@
 use crate::{
     error::AppError,
-    models::{AdminSqlResponse, GoogleIdentity, User, VaultRecord},
+    models::{
+        AdminSqlResponse, DueReminder, GoogleIdentity, MeetingReminderInput, PushSubscriptionRecord,
+        PushSubscriptionRequest, User, VaultRecord,
+    },
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{SecondsFormat, Utc};
@@ -294,6 +297,213 @@ impl Db {
             truncated,
         })
     }
+
+    pub async fn upsert_push_subscription(
+        &self,
+        user_id: &str,
+        subscription: &PushSubscriptionRequest,
+        user_agent: Option<String>,
+    ) -> Result<(), AppError> {
+        let conn = self.database.connect()?;
+        let now = now_string();
+        conn.execute(
+            "INSERT INTO push_subscriptions
+             (endpoint, user_id, p256dh, auth, user_agent, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(endpoint) DO UPDATE SET
+                user_id = excluded.user_id,
+                p256dh = excluded.p256dh,
+                auth = excluded.auth,
+                user_agent = excluded.user_agent,
+                updated_at = excluded.updated_at",
+            (
+                subscription.endpoint.clone(),
+                user_id.to_string(),
+                subscription.keys.p256dh.clone(),
+                subscription.keys.auth.clone(),
+                user_agent,
+                now.clone(),
+                now,
+            ),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_push_subscription(
+        &self,
+        user_id: &str,
+        endpoint: &str,
+    ) -> Result<(), AppError> {
+        let conn = self.database.connect()?;
+        conn.execute(
+            "DELETE FROM push_subscriptions WHERE user_id = ?1 AND endpoint = ?2",
+            (user_id.to_string(), endpoint.to_string()),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_push_subscription_by_endpoint(
+        &self,
+        endpoint: &str,
+    ) -> Result<(), AppError> {
+        let conn = self.database.connect()?;
+        conn.execute(
+            "DELETE FROM push_subscriptions WHERE endpoint = ?1",
+            (endpoint.to_string(),),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn push_subscriptions_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<PushSubscriptionRecord>, AppError> {
+        let conn = self.database.connect()?;
+        let mut rows = conn
+            .query(
+                "SELECT endpoint FROM push_subscriptions WHERE user_id = ?1",
+                (user_id.to_string(),),
+            )
+            .await?;
+
+        let mut subscriptions = Vec::new();
+        while let Some(row) = rows.next().await? {
+            subscriptions.push(PushSubscriptionRecord {
+                endpoint: row.get::<String>(0)?,
+            });
+        }
+        Ok(subscriptions)
+    }
+
+    pub async fn replace_meeting_reminders(
+        &self,
+        user_id: &str,
+        meeting_id: &str,
+        reminders: &[MeetingReminderInput],
+    ) -> Result<(), AppError> {
+        let conn = self.database.connect()?;
+        let now = now_string();
+        conn.execute("BEGIN IMMEDIATE", ()).await?;
+        let result = async {
+            conn.execute(
+                "DELETE FROM reminders
+                 WHERE user_id = ?1 AND meeting_id = ?2 AND status IN ('pending', 'failed')",
+                (user_id.to_string(), meeting_id.to_string()),
+            )
+            .await?;
+
+            for reminder in reminders {
+                conn.execute(
+                    "INSERT INTO reminders
+                     (id, user_id, meeting_id, remind_at, meeting_date, meeting_time, offset_minutes, status, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8, ?9)",
+                    (
+                        Uuid::new_v4().to_string(),
+                        user_id.to_string(),
+                        meeting_id.to_string(),
+                        reminder.remind_at.clone(),
+                        reminder.meeting_date.clone(),
+                        reminder.meeting_time.clone(),
+                        reminder.offset_minutes,
+                        now.clone(),
+                        now.clone(),
+                    ),
+                )
+                .await?;
+            }
+            Ok::<(), AppError>(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => {
+                conn.execute("COMMIT", ()).await?;
+                Ok(())
+            }
+            Err(err) => {
+                let _ = conn.execute("ROLLBACK", ()).await;
+                Err(err)
+            }
+        }
+    }
+
+    pub async fn delete_meeting_reminders(
+        &self,
+        user_id: &str,
+        meeting_id: &str,
+    ) -> Result<(), AppError> {
+        let conn = self.database.connect()?;
+        conn.execute(
+            "DELETE FROM reminders WHERE user_id = ?1 AND meeting_id = ?2",
+            (user_id.to_string(), meeting_id.to_string()),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn claim_due_reminders(&self, limit: usize) -> Result<Vec<DueReminder>, AppError> {
+        let conn = self.database.connect()?;
+        let now = now_string();
+        let mut rows = conn
+            .query(
+                "SELECT id, user_id
+                 FROM reminders
+                 WHERE status = 'pending' AND remind_at <= ?1
+                 ORDER BY remind_at ASC
+                 LIMIT ?2",
+                (now.clone(), limit as i64),
+            )
+            .await?;
+
+        let mut reminders = Vec::new();
+        while let Some(row) = rows.next().await? {
+            reminders.push(DueReminder {
+                id: row.get::<String>(0)?,
+                user_id: row.get::<String>(1)?,
+            });
+        }
+
+        for reminder in &reminders {
+            conn.execute(
+                "UPDATE reminders
+                 SET status = 'sending', updated_at = ?1
+                 WHERE id = ?2 AND status = 'pending'",
+                (now.clone(), reminder.id.clone()),
+            )
+            .await?;
+        }
+
+        Ok(reminders)
+    }
+
+    pub async fn mark_reminder_sent(&self, reminder_id: &str) -> Result<(), AppError> {
+        let conn = self.database.connect()?;
+        let now = now_string();
+        conn.execute(
+            "UPDATE reminders
+             SET status = 'sent', sent_at = ?1, updated_at = ?2
+             WHERE id = ?3",
+            (now.clone(), now, reminder_id.to_string()),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn mark_reminder_failed(&self, reminder_id: &str) -> Result<(), AppError> {
+        let conn = self.database.connect()?;
+        let now = now_string();
+        conn.execute(
+            "UPDATE reminders
+             SET status = 'failed', failed_at = ?1, failure_count = failure_count + 1, updated_at = ?2
+             WHERE id = ?3",
+            (now.clone(), now, reminder_id.to_string()),
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 fn now_string() -> String {
@@ -378,4 +588,35 @@ CREATE TABLE IF NOT EXISTS vaults (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    user_agent TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id);
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    meeting_id TEXT NOT NULL,
+    remind_at TEXT NOT NULL,
+    meeting_date TEXT NOT NULL,
+    meeting_time TEXT NOT NULL,
+    offset_minutes INTEGER,
+    status TEXT NOT NULL DEFAULT 'pending',
+    sent_at TEXT,
+    failed_at TEXT,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_user_meeting ON reminders(user_id, meeting_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(status, remind_at);
 "#;

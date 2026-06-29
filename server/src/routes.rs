@@ -8,15 +8,17 @@ use crate::{
     db::Db,
     error::AppError,
     models::{
-        AdminSqlRequest, AdminSqlResponse, PutVaultRequest, User, VaultResponse, VaultSummary,
+        AdminSqlRequest, AdminSqlResponse, DeletePushSubscriptionRequest, PushConfigResponse,
+        PushSubscriptionRequest, PutVaultRequest, SaveMeetingRemindersRequest, User,
+        VaultResponse, VaultSummary,
     },
 };
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Redirect},
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
@@ -44,6 +46,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
         .route("/api/vault", get(get_vault).put(put_vault))
+        .route("/api/push/config", get(push_config))
+        .route(
+            "/api/push/subscriptions",
+            post(save_push_subscription).delete(delete_push_subscription),
+        )
+        .route("/api/reminders/meeting", post(save_meeting_reminders))
+        .route(
+            "/api/reminders/meeting/{meeting_id}",
+            delete(delete_meeting_reminders),
+        )
         .route("/api/admin/sql", post(admin_sql))
         .fallback_service(static_files)
         .with_state(state)
@@ -203,6 +215,83 @@ async fn put_vault(
     Ok(Json(VaultResponse::from(Some(vault))))
 }
 
+async fn push_config(State(state): State<AppState>) -> Json<PushConfigResponse> {
+    Json(PushConfigResponse {
+        public_key: if state.config.push_reminders_configured() {
+            state.config.vapid_public_key.clone()
+        } else {
+            None
+        },
+    })
+}
+
+async fn save_push_subscription(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(payload): Json<PushSubscriptionRequest>,
+) -> Result<StatusCode, AppError> {
+    let user = user_from_cookie(&state, &jar).await?;
+    validate_push_subscription(&payload)?;
+    let user_agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.chars().take(512).collect::<String>());
+    state
+        .db
+        .upsert_push_subscription(&user.id, &payload, user_agent)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_push_subscription(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(payload): Json<DeletePushSubscriptionRequest>,
+) -> Result<StatusCode, AppError> {
+    let user = user_from_cookie(&state, &jar).await?;
+    if payload.endpoint.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "subscription endpoint is required".to_string(),
+        ));
+    }
+    state
+        .db
+        .delete_push_subscription(&user.id, &payload.endpoint)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn save_meeting_reminders(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(payload): Json<SaveMeetingRemindersRequest>,
+) -> Result<StatusCode, AppError> {
+    let user = user_from_cookie(&state, &jar).await?;
+    validate_meeting_reminders(&payload)?;
+    state
+        .db
+        .replace_meeting_reminders(&user.id, &payload.meeting_id, &payload.reminders)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_meeting_reminders(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(meeting_id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let user = user_from_cookie(&state, &jar).await?;
+    if meeting_id.trim().is_empty() {
+        return Err(AppError::BadRequest("meeting id is required".to_string()));
+    }
+    state
+        .db
+        .delete_meeting_reminders(&user.id, &meeting_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn admin_sql(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -242,6 +331,47 @@ fn validate_vault_payload(payload: &PutVaultRequest) -> Result<(), AppError> {
         ));
     }
 
+    Ok(())
+}
+
+fn validate_push_subscription(payload: &PushSubscriptionRequest) -> Result<(), AppError> {
+    if payload.endpoint.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "subscription endpoint is required".to_string(),
+        ));
+    }
+    if payload.keys.p256dh.trim().is_empty() || payload.keys.auth.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "subscription keys are required".to_string(),
+        ));
+    }
+    if payload.endpoint.len() > 4096 {
+        return Err(AppError::BadRequest(
+            "subscription endpoint is too large".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_meeting_reminders(payload: &SaveMeetingRemindersRequest) -> Result<(), AppError> {
+    if payload.meeting_id.trim().is_empty() {
+        return Err(AppError::BadRequest("meeting id is required".to_string()));
+    }
+    if payload.reminders.len() > 64 {
+        return Err(AppError::BadRequest(
+            "too many reminders for one meeting".to_string(),
+        ));
+    }
+    for reminder in &payload.reminders {
+        if reminder.remind_at.trim().is_empty()
+            || reminder.meeting_date.trim().is_empty()
+            || reminder.meeting_time.trim().is_empty()
+        {
+            return Err(AppError::BadRequest(
+                "reminder time and meeting time are required".to_string(),
+            ));
+        }
+    }
     Ok(())
 }
 

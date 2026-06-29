@@ -32,7 +32,7 @@ pub struct VaultRecord {
     pub updated_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PutVaultRequest {
     pub expected_revision: Option<i64>,
@@ -40,7 +40,7 @@ pub struct PutVaultRequest {
     pub ciphertext: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminSqlRequest {
     pub sql: String,
@@ -55,6 +55,59 @@ pub struct AdminSqlResponse {
     pub rows_affected: Option<u64>,
     pub row_count: usize,
     pub truncated: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushConfigResponse {
+    pub public_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushSubscriptionRequest {
+    pub endpoint: String,
+    pub keys: PushSubscriptionKeys,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushSubscriptionKeys {
+    pub p256dh: String,
+    pub auth: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletePushSubscriptionRequest {
+    pub endpoint: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveMeetingRemindersRequest {
+    pub meeting_id: String,
+    pub reminders: Vec<MeetingReminderInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingReminderInput {
+    pub remind_at: String,
+    pub meeting_date: String,
+    pub meeting_time: String,
+    pub offset_minutes: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DueReminder {
+    pub id: String,
+    pub user_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PushSubscriptionRecord {
+    pub endpoint: String,
 }
 
 #[derive(Debug, Serialize)]

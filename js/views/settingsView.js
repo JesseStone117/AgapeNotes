@@ -101,6 +101,18 @@ const SettingsView = {
                 </div>
             </div>
 
+            <!-- Reminder Section -->
+            <div class="settings-section">
+                <h3 class="settings-section-title">Reminders</h3>
+                <div class="settings-item">
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Meeting Notifications</div>
+                        <div class="settings-item-desc" id="reminder-status">Checking reminder status...</div>
+                    </div>
+                    <div class="settings-actions" id="reminder-actions"></div>
+                </div>
+            </div>
+
             <!-- Stats Section -->
             <div class="settings-section">
                 <h3 class="settings-section-title">Statistics</h3>
@@ -164,6 +176,7 @@ const SettingsView = {
         this._updateStats();
         this._updateSyncStatus();
         this._updateAccountSection();
+        this._updateReminderSection();
 
         // Bind handlers
         this._bindHandlers();
@@ -314,6 +327,57 @@ const SettingsView = {
         }
 
         return 'Set a swipe pattern for this device after entering your passphrase once.';
+    },
+
+    async _updateReminderSection() {
+        const statusEl = document.getElementById('reminder-status');
+        const actionsEl = document.getElementById('reminder-actions');
+        if (!statusEl || !actionsEl) return;
+
+        if (typeof ReminderManager === 'undefined') {
+            statusEl.textContent = 'PWA reminders are not loaded.';
+            actionsEl.innerHTML = '';
+            return;
+        }
+
+        const status = await ReminderManager.getStatus();
+        if (!status.supported) {
+            statusEl.textContent = 'This browser does not support PWA push reminders.';
+            actionsEl.innerHTML = '';
+            return;
+        }
+        if (!status.configured) {
+            statusEl.textContent = 'Reminder push notifications are not configured on the server yet.';
+            actionsEl.innerHTML = '';
+            return;
+        }
+        if (status.permission === 'denied') {
+            statusEl.textContent = 'Notifications are blocked in this browser.';
+            actionsEl.innerHTML = '';
+            return;
+        }
+
+        statusEl.textContent = status.subscribed
+            ? 'This device can receive meeting reminders.'
+            : 'Enable notifications on this device to receive meeting reminders.';
+        actionsEl.innerHTML = status.subscribed
+            ? '<button class="btn btn-ghost" id="disable-reminders-btn">Turn Off</button>'
+            : '<button class="btn btn-secondary" id="enable-reminders-btn">Enable</button>';
+
+        document.getElementById('enable-reminders-btn')?.addEventListener('click', async () => {
+            const enabled = await ReminderManager.ensureReadyForMeetingReminders();
+            if (enabled) {
+                await Dialog.alert('Meeting reminders are enabled for this device.', 'Reminders');
+            }
+            await this._updateReminderSection();
+        });
+
+        document.getElementById('disable-reminders-btn')?.addEventListener('click', async () => {
+            const confirmed = await Dialog.confirm('Turn off meeting reminder notifications on this device?', 'Reminders');
+            if (!confirmed) return;
+            await ReminderManager.disableForDevice();
+            await this._updateReminderSection();
+        });
     },
 
     /**

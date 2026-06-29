@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod error;
 mod models;
+mod reminders;
 mod routes;
 
 use anyhow::Context;
@@ -31,6 +32,8 @@ async fn main() -> anyhow::Result<()> {
         db,
         http: reqwest::Client::new(),
     };
+
+    tokio::spawn(reminders::run_due_reminder_loop(state.clone()));
 
     let app = routes::router(state)
         .layer(TraceLayer::new_for_http());

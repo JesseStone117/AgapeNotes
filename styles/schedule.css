@@ -358,6 +358,18 @@
     margin-top: var(--spacing-sm);
 }
 
+.meeting-reminder-custom {
+    display: none;
+    margin-top: var(--spacing-sm);
+}
+
+.meeting-reminder-help {
+    margin-top: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    line-height: var(--line-height-relaxed);
+}
+
 /* ---- Next Meeting in Person Profile ---- */
 
 .next-meeting-section {

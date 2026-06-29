@@ -36,3 +36,11 @@ services:
         sync: false
       - key: CODEX_ADMIN_SQL_TOKEN
         sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY_PEM
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: REMINDER_POLL_INTERVAL_SECONDS
+        value: "60"

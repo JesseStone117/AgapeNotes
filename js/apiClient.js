@@ -67,6 +67,37 @@ const ApiClient = {
         await this.request('/api/auth/logout', { method: 'POST' });
     },
 
+    async getPushConfig() {
+        return this.request('/api/push/config');
+    },
+
+    async savePushSubscription(subscription) {
+        return this.request('/api/push/subscriptions', {
+            method: 'POST',
+            body: subscription
+        });
+    },
+
+    async deletePushSubscription(endpoint) {
+        return this.request('/api/push/subscriptions', {
+            method: 'DELETE',
+            body: { endpoint }
+        });
+    },
+
+    async saveMeetingReminders(meetingId, reminders) {
+        return this.request('/api/reminders/meeting', {
+            method: 'POST',
+            body: { meetingId, reminders }
+        });
+    },
+
+    async deleteMeetingReminders(meetingId) {
+        return this.request(`/api/reminders/meeting/${encodeURIComponent(meetingId)}`, {
+            method: 'DELETE'
+        });
+    },
+
     signInWithGoogle() {
         window.location.href = '/api/auth/google/start';
     }

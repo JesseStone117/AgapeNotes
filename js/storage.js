@@ -782,7 +782,12 @@ class RemoteVaultStorageAdapter extends DataAdapter {
                 ? data.supporters.filter(person => !this._isDefaultSupporter(person))
                 : [],
             discipleshipTopics: Array.isArray(data.discipleshipTopics) ? data.discipleshipTopics : [],
-            meetings: Array.isArray(data.meetings) ? data.meetings : [],
+            meetings: Array.isArray(data.meetings)
+                ? data.meetings.map(meeting => ({
+                    ...meeting,
+                    reminder: normalizeMeetingReminder(meeting.reminder)
+                }))
+                : [],
             personal: {
                 growthPlans: Array.isArray(data.personal?.growthPlans) ? data.personal.growthPlans : [],
                 tasks: Array.isArray(data.personal?.tasks) ? data.personal.tasks : []

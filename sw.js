@@ -16,6 +16,7 @@ const STATIC_ASSETS = [
     '/js/pinAuth.js',
     '/js/storage.js',
     '/js/models.js',
+    '/js/reminders.js',
     '/js/state.js',
     '/js/updater.js',
     '/js/components/dialog.js',
@@ -117,6 +118,48 @@ self.addEventListener('fetch', (event) => {
                             return caches.match('/index.html');
                         }
                     });
+            })
+    );
+});
+
+self.addEventListener('push', (event) => {
+    let payload = {};
+    if (event.data) {
+        try {
+            payload = event.data.json();
+        } catch {
+            payload = {};
+        }
+    }
+
+    const title = payload.title || 'AgapeNotes Reminder';
+    const options = {
+        body: payload.body || 'You have a meeting coming up.',
+        icon: payload.icon || '/icons/icon-192.svg',
+        badge: payload.badge || '/icons/icon-192.svg',
+        tag: payload.tag || 'agapenotes-meeting-reminder',
+        renotify: true,
+        data: {
+            url: payload.url || '/'
+        }
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+
+    const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+            .then((clients) => {
+                const existingClient = clients.find(client => client.url.startsWith(self.location.origin));
+                if (existingClient) {
+                    existingClient.focus();
+                    return existingClient.navigate(targetUrl);
+                }
+                return self.clients.openWindow(targetUrl);
             })
     );
 });

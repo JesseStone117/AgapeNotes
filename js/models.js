@@ -213,7 +213,34 @@ function createMeeting(opts = {}) {
         repeatsWeekly: opts.repeatsWeekly || false,
         repeatEndDate: opts.repeatEndDate || '',
         seriesId: opts.seriesId || '',
+        reminder: normalizeMeetingReminder(opts.reminder),
         createdAt: opts.createdAt || new Date().toISOString()
+    };
+}
+
+function normalizeMeetingReminder(reminder = null) {
+    if (!reminder || typeof reminder !== 'object' || !reminder.enabled) {
+        return {
+            enabled: false,
+            mode: 'none',
+            offsetMinutes: null,
+            customDateTime: ''
+        };
+    }
+
+    const mode = String(reminder.mode || (
+        Number.isFinite(Number(reminder.offsetMinutes))
+            ? String(Number(reminder.offsetMinutes))
+            : 'custom'
+    ));
+
+    return {
+        enabled: true,
+        mode,
+        offsetMinutes: Number.isFinite(Number(reminder.offsetMinutes))
+            ? Number(reminder.offsetMinutes)
+            : null,
+        customDateTime: reminder.customDateTime || ''
     };
 }
 

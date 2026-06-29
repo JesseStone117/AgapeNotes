@@ -14,6 +14,10 @@ pub struct Config {
     pub google_client_secret: Option<String>,
     pub admin_sql_token: Option<String>,
     pub codex_admin_sql_token: Option<String>,
+    pub vapid_public_key: Option<String>,
+    pub vapid_private_key_pem: Option<String>,
+    pub vapid_subject: String,
+    pub reminder_poll_interval_seconds: u64,
 }
 
 impl Config {
@@ -49,6 +53,14 @@ impl Config {
             google_client_secret: optional_env("GOOGLE_CLIENT_SECRET"),
             admin_sql_token: optional_env("ADMIN_SQL_TOKEN"),
             codex_admin_sql_token: optional_env("CODEX_ADMIN_SQL_TOKEN"),
+            vapid_public_key: optional_env("VAPID_PUBLIC_KEY"),
+            vapid_private_key_pem: optional_multiline_env("VAPID_PRIVATE_KEY_PEM"),
+            vapid_subject: env::var("VAPID_SUBJECT")
+                .unwrap_or_else(|_| "mailto:support@agapenotes.app".to_string()),
+            reminder_poll_interval_seconds: env::var("REMINDER_POLL_INTERVAL_SECONDS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(60),
         })
     }
 
@@ -71,6 +83,10 @@ impl Config {
             .context("GOOGLE_CLIENT_SECRET is not configured")?;
         Ok((client_id, client_secret))
     }
+
+    pub fn push_reminders_configured(&self) -> bool {
+        self.vapid_public_key.is_some() && self.vapid_private_key_pem.is_some()
+    }
 }
 
 fn optional_env(key: &str) -> Option<String> {
@@ -82,6 +98,10 @@ fn optional_env(key: &str) -> Option<String> {
             Some(trimmed)
         }
     })
+}
+
+fn optional_multiline_env(key: &str) -> Option<String> {
+    optional_env(key).map(|value| value.replace("\\n", "\n"))
 }
 
 fn trim_trailing_slash(value: String) -> String {

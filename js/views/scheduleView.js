@@ -335,6 +335,10 @@ const ScheduleView = {
                     <span class="meeting-detail-label">Repeat</span>
                     <span class="meeting-detail-value">Weekly${meeting.repeatEndDate ? ' until ' + formatDate(meeting.repeatEndDate) : ''}</span>
                 </div>` : ''}
+                <div class="meeting-detail-row">
+                    <span class="meeting-detail-label">Reminder</span>
+                    <span class="meeting-detail-value">${this._escapeHtml(this._describeReminder(meeting.reminder))}</span>
+                </div>
             </div>
 
             <div class="meeting-actions">
@@ -389,6 +393,7 @@ const ScheduleView = {
             if (!ok) return;
 
             await storage.deleteMeeting(meeting.id);
+            await this._deleteMeetingReminder(meeting.id);
             this._meetings = await storage.getMeetings();
             Modal.close(); // close options modal
             this._renderDayDetailBody(dayContainer, dateStr);
@@ -425,6 +430,7 @@ const ScheduleView = {
         setTimeout(() => {
             document.getElementById('del-this-one')?.addEventListener('click', async () => {
                 await storage.deleteMeeting(meeting.id);
+                await this._deleteMeetingReminder(meeting.id);
                 this._meetings = await storage.getMeetings();
                 Modal.close(); // close delete options
                 this._renderDayDetailBody(dayContainer, dateStr);
@@ -437,6 +443,7 @@ const ScheduleView = {
                     .filter(m => m.seriesId === meeting.seriesId && m.date >= dateStr)
                     .map(m => m.id);
                 await storage.deleteMeetings(toDelete);
+                await this._deleteMeetingReminders(toDelete);
                 this._meetings = await storage.getMeetings();
                 Modal.close(); // close delete options
                 this._renderDayDetailBody(dayContainer, dateStr);
@@ -530,6 +537,20 @@ const ScheduleView = {
                     <textarea class="form-input" id="mtg-notes" rows="3" placeholder="Optional notes about the meeting...">${this._escapeHtml(existingMeeting?.notes || '')}</textarea>
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label" for="mtg-reminder-mode">Reminder</label>
+                    <select class="form-input" id="mtg-reminder-mode">
+                        ${this._renderReminderOptions(existingMeeting?.reminder)}
+                    </select>
+                    <div class="meeting-reminder-custom" id="mtg-reminder-custom-wrap">
+                        <label class="form-label" for="mtg-reminder-custom">Custom Reminder Time</label>
+                        <input type="datetime-local" class="form-input" id="mtg-reminder-custom" value="${this._escapeHtml(this._customReminderValue(existingMeeting?.reminder))}">
+                    </div>
+                    <p class="meeting-reminder-help">
+                        Reminders use this device's PWA notification permission. The server stores only the reminder time and meeting id.
+                    </p>
+                </div>
+
                 ${!isEdit ? `
                 <div class="form-group">
                     <div class="settings-item meeting-repeat-toggle">
@@ -590,6 +611,16 @@ const ScheduleView = {
             });
         }
 
+        const reminderMode = document.getElementById('mtg-reminder-mode');
+        const reminderCustomWrap = document.getElementById('mtg-reminder-custom-wrap');
+        const updateReminderCustomVisibility = () => {
+            if (reminderCustomWrap && reminderMode) {
+                reminderCustomWrap.style.display = reminderMode.value === 'custom' ? '' : 'none';
+            }
+        };
+        reminderMode?.addEventListener('change', updateReminderCustomVisibility);
+        updateReminderCustomVisibility();
+
         // Cancel
         document.getElementById('mtg-cancel')?.addEventListener('click', () => {
             Modal.close();
@@ -605,6 +636,7 @@ const ScheduleView = {
             const time = document.getElementById('mtg-time').value;
             const location = document.getElementById('mtg-location').value.trim();
             const notes = document.getElementById('mtg-notes').value.trim();
+            const reminder = this._readReminderFromForm(date, time);
 
             if (!personId) {
                 await Dialog.alert('Please select a person.', 'Required');
@@ -614,7 +646,16 @@ const ScheduleView = {
                 await Dialog.alert('Please set date and time.', 'Required');
                 return;
             }
+            if (reminder.enabled && reminder.mode === 'custom' && !reminder.customDateTime) {
+                await Dialog.alert('Please choose a custom reminder time.', 'Reminder Required');
+                return;
+            }
+            if (reminder.enabled && !this._isReminderBeforeMeeting(date, time, reminder)) {
+                await Dialog.alert('Reminder time must be before or at the meeting time.', 'Invalid Reminder');
+                return;
+            }
 
+            let reminderSynced = true;
             if (isEdit) {
                 // Update existing
                 existingMeeting.personId = personId;
@@ -623,7 +664,9 @@ const ScheduleView = {
                 existingMeeting.time = time;
                 existingMeeting.location = location;
                 existingMeeting.notes = notes;
+                existingMeeting.reminder = reminder;
                 await storage.saveMeeting(existingMeeting);
+                reminderSynced = await this._syncMeetingReminder(existingMeeting);
             } else {
                 const repeatsWeekly = repeatCheck?.checked || false;
                 const repeatEndDate = document.getElementById('mtg-repeat-end')?.value || '';
@@ -648,11 +691,13 @@ const ScheduleView = {
                             notes,
                             repeatsWeekly: true,
                             repeatEndDate,
-                            seriesId
+                            seriesId,
+                            reminder
                         }));
                         current.setDate(current.getDate() + 7);
                     }
                     await storage.saveMeetings(meetings);
+                    reminderSynced = await this._syncMeetingReminders(meetings);
                 } else {
                     const meeting = createMeeting({
                         personId,
@@ -660,9 +705,11 @@ const ScheduleView = {
                         date,
                         time,
                         location,
-                        notes
+                        notes,
+                        reminder
                     });
                     await storage.saveMeeting(meeting);
+                    reminderSynced = await this._syncMeetingReminder(meeting);
                 }
             }
 
@@ -672,7 +719,116 @@ const ScheduleView = {
             // Refresh the day detail if it's still open
             this._renderDayDetailBody(dayContainer, isEdit ? existingMeeting.date : dateStr);
             this._refreshCalendarBackground();
+
+            if (!reminderSynced && reminder.enabled) {
+                await Dialog.alert('The meeting was saved, but the reminder could not be scheduled on this device.', 'Reminder Not Scheduled');
+            }
         });
+    },
+
+    _renderReminderOptions(reminder) {
+        const normalized = normalizeMeetingReminder(reminder);
+        const selected = normalized.enabled ? normalized.mode : 'none';
+        const options = [
+            ['none', 'No reminder'],
+            ['0', 'At meeting time'],
+            ['5', '5 minutes before'],
+            ['10', '10 minutes before'],
+            ['15', '15 minutes before'],
+            ['30', '30 minutes before'],
+            ['60', '1 hour before'],
+            ['1440', '1 day before'],
+            ['custom', 'Custom time...']
+        ];
+
+        return options.map(([value, label]) => (
+            `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`
+        )).join('');
+    },
+
+    _customReminderValue(reminder) {
+        const normalized = normalizeMeetingReminder(reminder);
+        if (normalized.mode !== 'custom' || !normalized.customDateTime) return '';
+
+        const date = new Date(normalized.customDateTime);
+        if (Number.isNaN(date.getTime())) return normalized.customDateTime;
+
+        const pad = value => String(value).padStart(2, '0');
+        return [
+            date.getFullYear(),
+            pad(date.getMonth() + 1),
+            pad(date.getDate())
+        ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    },
+
+    _readReminderFromForm(date, time) {
+        const mode = document.getElementById('mtg-reminder-mode')?.value || 'none';
+        if (mode === 'none') return normalizeMeetingReminder(null);
+
+        if (mode === 'custom') {
+            return normalizeMeetingReminder({
+                enabled: true,
+                mode,
+                offsetMinutes: null,
+                customDateTime: document.getElementById('mtg-reminder-custom')?.value || ''
+            });
+        }
+
+        const offsetMinutes = Number(mode);
+        return normalizeMeetingReminder({
+            enabled: true,
+            mode,
+            offsetMinutes,
+            customDateTime: ''
+        });
+    },
+
+    _isReminderBeforeMeeting(date, time, reminder) {
+        const meetingTime = new Date(`${date}T${time}`);
+        if (Number.isNaN(meetingTime.getTime())) return false;
+
+        const reminderTime = reminder.mode === 'custom'
+            ? new Date(reminder.customDateTime)
+            : new Date(meetingTime.getTime() - Number(reminder.offsetMinutes || 0) * 60 * 1000);
+
+        return !Number.isNaN(reminderTime.getTime()) && reminderTime <= meetingTime;
+    },
+
+    _describeReminder(reminder) {
+        if (typeof ReminderManager !== 'undefined') {
+            return ReminderManager.describeReminder(reminder);
+        }
+        return normalizeMeetingReminder(reminder).enabled ? 'Reminder enabled' : 'No reminder';
+    },
+
+    async _syncMeetingReminder(meeting) {
+        if (typeof ReminderManager === 'undefined') return true;
+        try {
+            return await ReminderManager.syncMeeting(meeting);
+        } catch (error) {
+            console.warn('Could not sync meeting reminder:', error);
+            return false;
+        }
+    },
+
+    async _syncMeetingReminders(meetings) {
+        if (typeof ReminderManager === 'undefined') return true;
+        try {
+            return await ReminderManager.syncMeetings(meetings);
+        } catch (error) {
+            console.warn('Could not sync meeting reminders:', error);
+            return false;
+        }
+    },
+
+    async _deleteMeetingReminder(meetingId) {
+        if (typeof ReminderManager === 'undefined') return;
+        await ReminderManager.deleteMeeting(meetingId);
+    },
+
+    async _deleteMeetingReminders(meetingIds) {
+        if (typeof ReminderManager === 'undefined') return;
+        await ReminderManager.deleteMeetings(meetingIds);
     },
 
     // =========================================================
