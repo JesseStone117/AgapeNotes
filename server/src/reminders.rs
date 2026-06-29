@@ -5,7 +5,7 @@ use crate::{
 };
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
-use reqwest::StatusCode;
+use reqwest::{StatusCode, header};
 use serde::Serialize;
 use tokio::time::{MissedTickBehavior, interval};
 use url::Url;
@@ -133,13 +133,7 @@ async fn send_web_push(state: &AppState, endpoint: &str) -> Result<(), PushSendE
         .as_deref()
         .ok_or_else(|| PushSendError::Other("missing VAPID public key".to_string()))?;
 
-    let response = state
-        .http
-        .post(endpoint)
-        .header("TTL", "300")
-        .header("Urgency", "normal")
-        .header("Authorization", format!("vapid t={token}, k={public_key}"))
-        .body(Vec::new())
+    let response = web_push_request(&state.http, endpoint, &token, public_key)
         .send()
         .await
         .map_err(|err| PushSendError::Other(err.to_string()))?;
@@ -167,6 +161,22 @@ async fn send_web_push(state: &AppState, endpoint: &str) -> Result<(), PushSendE
             )))
         }
     }
+}
+
+fn web_push_request(
+    client: &reqwest::Client,
+    endpoint: &str,
+    token: &str,
+    public_key: &str,
+) -> reqwest::RequestBuilder {
+    client
+        .post(endpoint)
+        .header("TTL", "300")
+        .header("Urgency", "normal")
+        .header("Authorization", format!("vapid t={token}, k={public_key}"))
+        .header(header::CONTENT_LENGTH, "0")
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .body(Vec::new())
 }
 
 fn build_vapid_token(state: &AppState, endpoint: &str) -> Result<String, AppError> {
@@ -201,4 +211,27 @@ fn push_audience(endpoint: &str) -> Result<String, AppError> {
         None => format!("{scheme}://{host}"),
     };
     Ok(audience)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn web_push_request_declares_empty_body_length() {
+        let request = web_push_request(
+            &reqwest::Client::new(),
+            "https://fcm.googleapis.com/fcm/send/test",
+            "token",
+            "public-key",
+        )
+        .build()
+        .expect("request should build");
+
+        assert_eq!(request.headers().get(header::CONTENT_LENGTH).unwrap(), "0");
+        assert_eq!(
+            request.headers().get(header::CONTENT_TYPE).unwrap(),
+            "application/octet-stream"
+        );
+    }
 }
