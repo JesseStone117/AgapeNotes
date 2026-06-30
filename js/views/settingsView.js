@@ -483,8 +483,8 @@ const SettingsView = {
         statusEl.textContent = status.staleSubscription
             ? 'This device has an old push subscription. Enable again to refresh it.'
             : status.subscribed
-            ? 'This device can receive meeting reminders.'
-            : 'Enable notifications on this device to receive meeting reminders.';
+            ? 'This device is subscribed to server-sent meeting reminders.'
+            : 'Enable notifications on this device to receive server-sent meeting reminders.';
         actionsEl.innerHTML = status.subscribed
             ? '<button class="btn btn-secondary" id="test-reminders-btn">Send Test</button><button class="btn btn-ghost" id="disable-reminders-btn">Turn Off</button>'
             : '<button class="btn btn-secondary" id="enable-reminders-btn">Enable</button>';
@@ -554,7 +554,7 @@ const SettingsView = {
         const total = result?.subscriptionCount || 0;
 
         if (sent > 0 && failed === 0 && stale === 0) {
-            return 'The server accepted a test push for this device. If nothing appears, check Android notification settings for AgapeNotes or Chrome.';
+            return 'The server sent a high-priority test push for this device. If nothing appears, check Android notification settings for AgapeNotes or Chrome.';
         }
 
         const errors = Array.isArray(result?.errors) && result.errors.length > 0

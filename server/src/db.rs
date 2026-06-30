@@ -507,14 +507,21 @@ impl Db {
     pub async fn claim_due_reminders(&self, limit: usize) -> Result<Vec<DueReminder>, AppError> {
         let conn = self.database.connect()?;
         let now = now_string();
+        let retry_cutoff = time_string(Utc::now() - chrono::Duration::minutes(1));
+        let stuck_cutoff = time_string(Utc::now() - chrono::Duration::minutes(10));
         let mut rows = conn
             .query(
                 "SELECT id, user_id
                  FROM reminders
-                 WHERE status = 'pending' AND remind_at <= ?1
+                 WHERE remind_at <= ?1
+                   AND (
+                     status = 'pending'
+                     OR (status = 'failed' AND failure_count < 3 AND failed_at <= ?2)
+                     OR (status = 'sending' AND updated_at <= ?3)
+                   )
                  ORDER BY remind_at ASC
-                 LIMIT ?2",
-                (now.clone(), limit as i64),
+                 LIMIT ?4",
+                (now.clone(), retry_cutoff, stuck_cutoff, limit as i64),
             )
             .await?;
 
@@ -530,7 +537,12 @@ impl Db {
             conn.execute(
                 "UPDATE reminders
                  SET status = 'sending', updated_at = ?1
-                 WHERE id = ?2 AND status = 'pending'",
+                 WHERE id = ?2
+                   AND (
+                     status = 'pending'
+                     OR (status = 'failed' AND failure_count < 3)
+                     OR status = 'sending'
+                   )",
                 (now.clone(), reminder.id.clone()),
             )
             .await?;
@@ -567,7 +579,11 @@ impl Db {
 }
 
 fn now_string() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+    time_string(Utc::now())
+}
+
+fn time_string(value: chrono::DateTime<Utc>) -> String {
+    value.to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
 fn user_from_row(row: &Row) -> Result<User, AppError> {

@@ -152,11 +152,8 @@ const ReminderManager = {
             return true;
         }
 
-        const ready = await this.ensureReadyForMeetingReminders({ showAlerts: false });
-        if (!ready) return false;
-
         await ApiClient.saveMeetingReminders(meeting.id, reminders);
-        return true;
+        return this.ensureReadyForMeetingReminders({ showAlerts: false });
     },
 
     async syncMeetings(meetings) {
@@ -167,9 +164,6 @@ const ReminderManager = {
             return true;
         }
 
-        const ready = await this.ensureReadyForMeetingReminders({ showAlerts: false });
-        if (!ready) return false;
-
         for (const meeting of meetings) {
             const reminders = this._buildReminderRecords(meeting, timeZone);
             if (reminders.length > 0) {
@@ -178,7 +172,7 @@ const ReminderManager = {
                 await ApiClient.deleteMeetingReminders(meeting.id);
             }
         }
-        return true;
+        return this.ensureReadyForMeetingReminders({ showAlerts: false });
     },
 
     async deleteMeeting(meetingId) {

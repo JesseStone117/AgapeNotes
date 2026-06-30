@@ -547,7 +547,7 @@ const ScheduleView = {
                         <input type="datetime-local" class="form-input" id="mtg-reminder-custom" value="${this._escapeHtml(this._customReminderValue(existingMeeting?.reminder))}">
                     </div>
                     <p class="meeting-reminder-help">
-                        Reminders use this device's PWA notification permission. The server stores only the reminder time and meeting id.
+                        Reminders are sent by the AgapeNotes server through this device's PWA notification permission.
                     </p>
                 </div>
 
@@ -723,8 +723,8 @@ const ScheduleView = {
             if (!reminderSynced && reminder.enabled) {
                 const reason = typeof ReminderManager !== 'undefined' ? ReminderManager.lastFailureMessage() : '';
                 const message = reason
-                    ? `The meeting was saved, but the reminder could not be scheduled. ${reason}`
-                    : 'The meeting was saved, but the reminder could not be scheduled on this device.';
+                    ? `The meeting was saved, but reminder delivery could not be fully confirmed. ${reason}`
+                    : 'The meeting was saved, but reminder delivery could not be fully confirmed.';
                 await Dialog.alert(message, 'Reminder Not Scheduled');
             }
         });
@@ -806,7 +806,9 @@ const ScheduleView = {
     },
 
     async _syncMeetingReminder(meeting) {
-        if (typeof ReminderManager === 'undefined') return true;
+        if (typeof ReminderManager === 'undefined') {
+            return !normalizeMeetingReminder(meeting?.reminder).enabled;
+        }
         try {
             return await ReminderManager.syncMeeting(meeting);
         } catch (error) {
@@ -816,7 +818,9 @@ const ScheduleView = {
     },
 
     async _syncMeetingReminders(meetings) {
-        if (typeof ReminderManager === 'undefined') return true;
+        if (typeof ReminderManager === 'undefined') {
+            return !meetings.some(meeting => normalizeMeetingReminder(meeting?.reminder).enabled);
+        }
         try {
             return await ReminderManager.syncMeetings(meetings);
         } catch (error) {

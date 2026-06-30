@@ -154,7 +154,7 @@ async fn send_web_push(state: &AppState, endpoint: &str) -> Result<(), PushSendE
                 .collect::<Vec<_>>()
                 .join(" ")
                 .chars()
-                .take(180)
+                .take(240)
                 .collect::<String>();
             Err(PushSendError::Other(format!(
                 "push service returned {status}: {detail}"
@@ -171,8 +171,8 @@ fn web_push_request(
 ) -> reqwest::RequestBuilder {
     client
         .post(endpoint)
-        .header("TTL", "300")
-        .header("Urgency", "normal")
+        .header("TTL", "86400")
+        .header("Urgency", "high")
         .header("Authorization", format!("vapid t={token}, k={public_key}"))
         .header(header::CONTENT_LENGTH, "0")
         .header(header::CONTENT_TYPE, "application/octet-stream")
@@ -218,7 +218,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn web_push_request_declares_empty_body_length() {
+    fn web_push_request_uses_time_sensitive_delivery_headers() {
         let request = web_push_request(
             &reqwest::Client::new(),
             "https://fcm.googleapis.com/fcm/send/test",
@@ -228,6 +228,8 @@ mod tests {
         .build()
         .expect("request should build");
 
+        assert_eq!(request.headers().get("TTL").unwrap(), "86400");
+        assert_eq!(request.headers().get("Urgency").unwrap(), "high");
         assert_eq!(request.headers().get(header::CONTENT_LENGTH).unwrap(), "0");
         assert_eq!(
             request.headers().get(header::CONTENT_TYPE).unwrap(),
